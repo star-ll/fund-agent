@@ -1,13 +1,25 @@
 from contextlib import asynccontextmanager
 from typing import Optional
 import asyncio
+import io
 import math
+import os
 import time
 from functools import partial
 
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True  # 兼容部分 App 生成的不规范 JPEG
+
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), "../.env"))
+
 import akshare as ak
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 import pandas as pd
+
+from alibabacloud_ocr_api20210707.client import Client as OcrClient
+from alibabacloud_ocr_api20210707 import models as ocr_models
+from alibabacloud_tea_openapi import models as open_api_models
 
 
 # ---------------------------------------------------------------------------
@@ -210,5 +222,67 @@ async def fund_estimate(
         if df.empty:
             return []
         return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# OCR（阿里云 RecognizeAllText）
+# ---------------------------------------------------------------------------
+
+def _make_ocr_client() -> OcrClient:
+    cfg = open_api_models.Config(
+        access_key_id=os.environ.get("ALIYUN_ACCESS_KEY_ID", ""),
+        access_key_secret=os.environ.get("ALIYUN_ACCESS_KEY_SECRET", ""),
+    )
+    cfg.endpoint = "ocr-api.cn-hangzhou.aliyuncs.com"
+    return OcrClient(cfg)
+
+
+def _resize_if_needed(data: bytes) -> bytes:
+    """阿里云 OCR 限制单边最大 8192px，超出则等比压缩。"""
+    img = Image.open(io.BytesIO(data))
+    max_side = max(img.width, img.height)
+    if max_side <= 8000:
+        return data
+    ratio = 8000 / max_side
+    new_size = (int(img.width * ratio), int(img.height * ratio))
+    img = img.resize(new_size, Image.LANCZOS)
+    buf = io.BytesIO()
+    fmt = img.format or "JPEG"
+    img.save(buf, format=fmt)
+    return buf.getvalue()
+
+
+def _do_ocr(data: bytes) -> str:
+    data = _resize_if_needed(data)
+    client = _make_ocr_client()
+    request = ocr_models.RecognizeAllTextRequest(
+        type="General",
+        body=io.BytesIO(data),
+    )
+    response = client.recognize_all_text(request)
+    data_obj = response.body.data
+    if not data_obj:
+        return ""
+    if data_obj.content:
+        return data_obj.content.strip()
+    if data_obj.sub_images:
+        return "\n".join(s.content for s in data_obj.sub_images if s.content).strip()
+    return ""
+
+
+@app.post("/ocr")
+async def ocr_image(file: UploadFile = File(..., description="图片文件，支持 PNG / JPG")):
+    """使用阿里云 OCR 识别图片文字。"""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="只支持图片文件（image/*）")
+    if not os.environ.get("ALIYUN_ACCESS_KEY_ID"):
+        raise HTTPException(status_code=500, detail="未配置 ALIYUN_ACCESS_KEY_ID")
+    try:
+        data = await file.read()
+        loop = asyncio.get_event_loop()
+        text = await loop.run_in_executor(None, _do_ocr, data)
+        return {"text": text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

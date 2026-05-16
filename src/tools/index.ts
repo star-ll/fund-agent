@@ -107,4 +107,44 @@ export const tools: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_user_profile',
+      description: '读取用户本地保存的持仓和个人信息档案。当用户询问自己的持仓、风险偏好等个人数据时调用。',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'save_user_profile',
+      description:
+        '保存或更新用户的持仓和个人信息档案。当用户提供持仓信息、风险偏好、个人背景时调用。新数据会与已有数据合并，holdings 按基金代码去重。',
+      parameters: {
+        type: 'object',
+        properties: {
+          holdings: {
+            type: 'array',
+            description: '持仓列表（可只传需要更新的部分）',
+            items: {
+              type: 'object',
+              properties: {
+                fund_code: { type: 'string' },
+                shares: { type: 'number', description: '持有份额' },
+                cost: { type: 'number', description: '持仓总成本（元）' },
+                note: { type: 'string', description: '备注' },
+              },
+              required: ['fund_code'],
+            },
+          },
+          risk_level: { type: 'string', enum: ['low', 'medium', 'high'], description: '风险承受能力' },
+          investment_years: { type: 'number', description: '投资年限' },
+          target_return: { type: 'string', description: '目标年化收益率，如 10%' },
+          max_loss_tolerance: { type: 'string', description: '可承受最大亏损，如 20%' },
+          notes: { type: 'string', description: '其他个人备注' },
+        },
+      },
+    },
+  },
 ];
