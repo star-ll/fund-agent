@@ -5,6 +5,7 @@ import { systemPrompt } from '../prompts';
 import { getFundInfo, getFundNav, calcMetrics } from '../services/fund';
 import { getFundManager } from '../services/manager';
 import { getFundPortfolio, analyzePortfolio } from '../services/portfolio';
+import { extractText } from '../services/ocr';
 
 const client = new OpenAI({ baseURL: config.llm.baseURL, apiKey: config.llm.apiKey });
 
@@ -65,6 +66,9 @@ async function dispatchTool(name: string, args: Record<string, unknown>): Promis
 
     case 'get_fund_portfolio':
       return getFundPortfolio(args.fund_code as string, args.date as string);
+
+    case 'read_image':
+      return { text: await extractText(args.file_path as string) };
 
     case 'analyze_portfolio':
       return analyzePortfolio(

@@ -66,6 +66,24 @@ export const tools: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'read_image',
+      description:
+        '对图片文件进行 OCR 识别，提取其中的文字内容。适用于基金持仓截图，识别后可解析出基金代码、份额、持仓成本等信息，再调用 analyze_portfolio 进行分析。',
+      parameters: {
+        type: 'object',
+        properties: {
+          file_path: {
+            type: 'string',
+            description: '图片文件路径，支持绝对路径或 ~ 开头的路径，支持 PNG / JPG',
+          },
+        },
+        required: ['file_path'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'analyze_portfolio',
       description: '分析投资者持仓组合，计算总收益、年化收益、最大回撤、波动率等',
       parameters: {
