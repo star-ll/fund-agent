@@ -33,15 +33,24 @@ async function setHistory(userId: string, history: Message[]): Promise<void> {
 // GET /fund  —  企微 URL 验证
 // ---------------------------------------------------------------------------
 app.get('/fund', (req, res) => {
-  const { msg_signature, timestamp, nonce, echostr } = req.query as Record<string, string>;
+  console.log('[verify] url:', req.url);
+  console.log('[verify] query:', JSON.stringify(req.query));
+  const msg_signature = req.query['msg_signature'] as string;
+  const timestamp = req.query['timestamp'] as string;
+  const nonce = req.query['nonce'] as string;
+  const echostr = req.query['echostr'] as string;
+  console.log('[verify] echostr len:', echostr?.length ?? 0);
   if (!verifySignature(msg_signature, timestamp, nonce, echostr)) {
+    console.log('[verify] signature error, token:', config.wework.token?.slice(0, 4));
     res.status(403).send('signature error');
     return;
   }
   try {
     const plain = decrypt(echostr);
+    console.log('[verify] success, plain len:', plain.length);
     res.send(plain);
-  } catch {
+  } catch (e) {
+    console.log('[verify] decrypt error:', e);
     res.status(500).send('decrypt error');
   }
 });
