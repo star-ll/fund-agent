@@ -1,109 +1,260 @@
-## 简介
+# AI 基金助理
 
-AI 基金分析助理，运行在终端，通过自然语言对话完成基金研究和持仓管理。底层是一个 Agent，能够自主决定调用哪些数据接口、组合分析结果，最终给出量化指标和个性化建议。
+基于 LLM 的基金分析助手，支持企业微信自建应用和本地 CLI 两种使用方式。用户可以通过自然语言查询基金信息、分析持仓组合、识别持仓截图，AI 会自动调用相关工具完成分析并回复。
 
-## 能力概览
+## 功能
 
-### 基金分析
+- **基金查询**：基本信息、净值历史、年化收益、最大回撤、夏普比率等量化指标
+- **基金经理**：从业年限、管理规模、历史最佳回报
+- **持仓分析**：多只基金组合的整体收益、回撤、波动率
+- **OCR 识别**：上传持仓截图，自动提取基金代码和份额，直接进行分析
+- **用户档案**：记录持仓、风险偏好、投资年限等信息，支持跨对话记忆
+- **企微集成**：作为企业微信自建应用接收消息，异步处理后主动推送回复
 
-针对任意开放式基金，Agent 可以：
-
-- **基本信息**：基金代码、简称、类型、最新单位净值、累计净值、日涨跌幅
-- **历史净值走势**：支持 1月 / 3月 / 6月 / 1年 / 3年 / 5年 / 今年来 / 成立来 等多个时间段
-- **量化指标**（基于历史净值计算）：
-  - 年化收益率
-  - 最大回撤率
-  - 年化波动率
-  - 夏普比率（无风险利率 2%）
-- **同类排名走势**：与同类基金的相对表现
-- **实时净值估算**：盘中实时预估净值
-
-### 基金经理分析
-
-- 查询基金的当前管理人：姓名、所属公司、累计从业年限、管理资产总规模、现任基金最佳回报
-- 支持按基金代码检索对应经理
-- 支持浏览全市场经理列表
-
-### 基金持仓分析
-
-两种维度：
-
-1. **基金内部持仓**：查看某只基金的季报重仓股明细，包含股票代码、名称、占净值比例、持股数量、持仓市值
-2. **投资者持仓组合分析**：输入持有的基金列表（代码 + 份额 + 成本），Agent 计算：
-   - 总持仓市值和总成本
-   - 总收益率
-   - 组合年化收益率（按市值加权）
-   - 组合最大回撤（按市值加权）
-   - 组合年化波动率（按市值加权）
-   - 结合用户风险承受能力给出调仓建议
-
-### 基金排行
-
-- 按类型筛选：全部 / 股票型 / 混合型 / 债券型 / 指数型 / QDII / LOF / FOF
-- 返回近期业绩排行，包含近 1周 / 1月 / 3月 / 6月 / 1年 收益率
-
-## 技术架构
+## 架构
 
 ```
-终端 (readline)
-    ↓
-Agent (src/agents/executor.ts)
-    ↓  tool call 循环（最多 5 轮）
-数据工具层 (src/tools/index.ts)   ←→   LLM (OpenAI-compatible API)
-    ↓
-Service 层 (src/services/)
-    ↓  HTTP
-AKShare FastAPI 服务 (server/main.py)
-    ↓
-东方财富 / 天天基金 等数据源
+企业微信 / CLI
+     │
+     ▼
+Node.js Webhook (port 3000)   ←→   MySQL（用户档案、持仓）
+     │                         ←→   Redis（对话历史缓存）
+     ▼
+LLM（OpenAI 兼容接口）
+     │ tool calls
+     ▼
+Python AKShare Server (port 8080)   ←  基金数据 + 阿里云 OCR
 ```
 
-**Agent 工具列表：**
+## 目录结构
 
-| 工具名 | 作用 |
-|---|---|
-| `get_fund_info` | 获取基金基本信息 |
-| `get_fund_nav` | 获取净值历史 + 自动计算量化指标 |
-| `get_fund_manager` | 获取基金经理信息 |
-| `get_fund_portfolio` | 获取基金季报持仓明细 |
-| `analyze_portfolio` | 分析投资者持仓组合 |
+```
+.
+├── src/
+│   ├── agents/executor.ts      # LLM agent，工具调度
+│   ├── services/
+│   │   ├── db.ts               # MySQL 连接池
+│   │   ├── redis.ts            # Redis 客户端
+│   │   ├── user.ts             # 用户档案读写（webhook 模式）
+│   │   ├── storage.ts          # 用户档案读写（CLI 模式，本地文件）
+│   │   ├── fund.ts             # 基金数据
+│   │   ├── manager.ts          # 基金经理数据
+│   │   ├── portfolio.ts        # 持仓分析
+│   │   └── ocr.ts              # OCR 调用
+│   ├── tools/index.ts          # LLM tool 定义
+│   ├── wecom/
+│   │   ├── api.ts              # 企微消息发送
+│   │   └── crypto.ts           # 企微加解密
+│   ├── prompts/                # system prompt
+│   ├── webhook.ts              # Express 服务（企微模式）
+│   ├── webhook-entry.ts        # webhook 入口
+│   └── index.ts                # CLI 入口
+├── server/
+│   └── main.py                 # FastAPI，封装 AKShare + 阿里云 OCR
+├── schema.sql                  # 数据库建表语句
+├── ecosystem.config.js         # PM2 进程配置
+└── .env.example                # 环境变量模板
+```
 
-## LLM
+## 本地开发
 
-支持 OpenAI 系 API（ChatGPT、Deepseek、通义千问等兼容 OpenAI 格式的服务）。
-
-## 快速开始
-
-**1. 配置环境变量**
+**依赖：** Node.js 20+、Python 3.11+、uv、MySQL 8+、Redis
 
 ```bash
+# 安装 Node 依赖
+npm install
+
+# 安装 Python 依赖
+cd server && uv sync && cd ..
+
+# 复制并填写环境变量
 cp .env.example .env
-# 编辑 .env，填入 LLM_API_KEY、LLM_BASE_URL、LLM_MODEL
-```
 
-**2. 安装依赖**
+# 初始化数据库（首次）
+mysql -u root -p < schema.sql
 
-```bash
-npm install           # Node.js 依赖
-cd server && uv sync  # Python 依赖（需要 uv）
-cd ..
-```
+# 启动 Python 数据服务
+npm run server:dev
 
-**3. 启动**
+# 启动企微 webhook（另一个终端）
+npm run webhook
 
-```bash
-# 终端 1：启动 AKShare 数据服务
-npm run server   # → http://localhost:8080
-
-# 终端 2：启动助理
+# 或者使用 CLI 模式
 npm run dev
 ```
 
-**4. 使用示例**
+## 环境变量
 
+| 变量 | 说明 |
+|------|------|
+| `LLM_BASE_URL` | OpenAI 兼容接口地址 |
+| `LLM_API_KEY` | API Key |
+| `LLM_MODEL` | 模型名称，如 `gpt-4o` |
+| `AKSHARE_BASE_URL` | Python 数据服务地址，默认 `http://localhost:8080` |
+| `ALIYUN_ACCESS_KEY_ID` | 阿里云 AccessKey（OCR 功能） |
+| `ALIYUN_ACCESS_KEY_SECRET` | 阿里云 AccessSecret |
+| `MYSQL_HOST` | MySQL 主机 |
+| `MYSQL_PORT` | MySQL 端口，默认 3306 |
+| `MYSQL_USER` | MySQL 用户名 |
+| `MYSQL_PASSWORD` | MySQL 密码 |
+| `MYSQL_DATABASE` | 数据库名，默认 `ai_jijin` |
+| `REDIS_HOST` | Redis 主机，默认 `localhost` |
+| `REDIS_PORT` | Redis 端口，默认 6379 |
+| `REDIS_PASSWORD` | Redis 密码（可选） |
+| `WEWORK_CORP_ID` | 企业微信企业 ID |
+| `WEWORK_AGENT_ID` | 自建应用 AgentID |
+| `WEWORK_SECRET` | 自建应用 Secret |
+| `WEWORK_TOKEN` | 消息接收 Token |
+| `WEWORK_ENCODING_AES_KEY` | 消息加解密 Key |
+| `PORT` | HTTP 服务端口，默认 3000 |
+
+## 部署
+
+### 前置条件
+
+服务器上需要安装：Node.js 20+、Python 3.11+、uv、MySQL 8+、Redis、Nginx、PM2
+
+```bash
+# Node.js（以 Ubuntu 为例）
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+apt install -y nodejs
+
+# uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# PM2
+npm install -g pm2
 ```
-你: 帮我分析一下 000001 这只基金
-你: 基金经理是谁？历史业绩怎么样？
-你: 我持有 000001 1万份，成本 1.2 元，帮我分析持仓情况
-你: 最近混合型基金里有哪些表现好的？
+
+### 1. 拉取代码
+
+```bash
+git clone <your-repo> /path
+cd /path
 ```
+
+### 2. 配置环境变量
+
+```bash
+cp .env.example .env
+vi .env   # 填入生产环境的真实配置
+```
+
+### 3. 初始化数据库
+
+```bash
+mysql -u root -p < schema.sql
+```
+
+### 4. 安装依赖并构建
+
+构建 NodeJS 服务
+
+需要提前安装 node
+
+```bash
+npm ci
+npm run build
+```
+
+构建Python服务
+
+需要提前安装 python3 和 uv
+
+```bash
+cd server && uv sync && cd ..
+```
+
+### 5. 配置 Nginx + SSL
+
+5.1 申请 SSL 证书：
+
+5.2 写入 Nginx 配置 `/etc/nginx/sites-available/ink8.ink`：
+
+```nginx
+server {
+    listen 80;
+    server_name ink8.ink;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ink8.ink;
+
+    ssl_certificate     /etc/letsencrypt/live/ink8.ink/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/ink8.ink/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    location /fund {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    location /health {
+        proxy_pass http://127.0.0.1:3000;
+    }
+}
+```
+
+5.3 启动 nginx
+
+```bash
+ln -s /etc/nginx/sites-available/ink8.ink /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+```
+
+### 6. 启动服务
+
+需要提前安装 pm2:
+
+```bash
+npm i -g pm2
+```
+
+启动服务
+
+```bash
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup   # 按提示执行输出的命令，设置开机自启
+```
+
+### 7. 验证
+
+```bash
+# 检查进程状态
+pm2 status
+
+# 查看日志
+pm2 logs ai-fund-webhook
+pm2 logs ai-fund-server
+
+# 健康检查
+curl https://ink8.ink/health
+```
+
+### 更新部署
+
+```bash
+cd /opt/ai-fund
+git pull
+npm ci && npm run build
+pm2 restart ai-fund-webhook
+
+# Python 服务有改动时
+cd server && uv sync && cd ..
+pm2 restart ai-fund-server
+```
+
+## 企业微信配置
+
+在企业微信管理后台 → 应用管理 → 自建应用 → 接收消息，填写：
+
+- **URL**：`https://ink8.ink/fund`
+- **Token**：对应 `WEWORK_TOKEN`
+- **EncodingAESKey**：对应 `WEWORK_ENCODING_AES_KEY`

@@ -23,11 +23,11 @@ export const config = {
     password: process.env.REDIS_PASSWORD || undefined,
   },
   wework: {
-    corpId: process.env.WEWORK_CORP_ID ?? '',
-    agentId: process.env.WEWORK_AGENT_ID ?? '',
-    secret: process.env.WEWORK_SECRET ?? '',
-    token: process.env.WEWORK_TOKEN ?? '',
-    encodingAESKey: process.env.WEWORK_ENCODING_AES_KEY ?? '',
+    corpId: process.env.WECOM_CORP_ID ?? '',
+    agentId: process.env.WECOM_AGENT_ID ?? '',
+    secret: process.env.WECOM_SECRET ?? '',
+    token: process.env.WECOM_TOKEN ?? '',
+    encodingAESKey: process.env.WECOM_ENCODING_AES_KEY ?? '',
   },
   port: parseInt(process.env.PORT ?? '3000'),
 };

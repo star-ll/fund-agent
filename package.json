@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "ts-node src/index.ts",
     "webhook": "ts-node src/webhook-entry.ts",
-    "build": "tsc",
+    "build": "tsc && cp src/prompts/*.md dist/prompts/",
     "start": "node dist/webhook-entry.js",
     "server": "cd server && uv run uvicorn main:app --host 0.0.0.0 --port 8080",
     "server:dev": "cd server && uv run uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
