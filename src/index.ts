@@ -1,5 +1,4 @@
 import * as readline from 'readline';
-import stringWidth from 'string-width';
 import { runAgent } from './agents/executor';
 import { loadProfile } from './services/storage';
 import { startupSummaryPrompt } from './prompts';
@@ -36,38 +35,63 @@ function startSpinner(initialLabel: string) {
     i++;
   }, 80);
   return {
-    update: (next: string) => { label = next; },
+    update: (next: string) => {
+      // 换新步骤时先落一行，让每个步骤独占一行
+      process.stdout.write(`\r\x1b[2K${paint(c.gray, '✓')} ${paint(c.dim, label)}\n`);
+      label = next;
+      i = 0;
+    },
     stop: () => { clearInterval(timer); process.stdout.write('\r\x1b[2K'); },
   };
 }
 
 // ---------------------------------------------------------------------------
-// 多行输入（raw mode）
+// 主循环
 // ---------------------------------------------------------------------------
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
 const history: Message[] = [];
-let isProcessing = false;
-let inputLines: string[] = [''];
-let isPasting = false; // bracketed paste mode 状态
 
-const PROMPT_FIRST = () => `\n${paint(c.green + c.bold, '你')} ${paint(c.gray, '›')} `;
-const PROMPT_CONT  = () => `${paint(c.gray, '  · ')}`;
+function askUser() {
+  rl.question('\n你 › ', async (input) => {
+    const text = input.trim();
+    if (!text) return askUser();
 
-function showInputPrompt() {
-  inputLines = [''];
-  process.stdout.write(PROMPT_FIRST());
+    // 行尾 \ 续行：继续读取下一行拼接
+    if (text.endsWith('\\')) {
+      const prefix = text.slice(0, -1) + '\n';
+      collectLines(prefix);
+      return;
+    }
+
+    if (text === '/exit' || text === '/quit') {
+      console.log(paint(c.gray, '\n再见，祝投资顺利 👋\n'));
+      rl.close();
+      return;
+    }
+
+    await submit(text);
+    askUser();
+  });
 }
 
-async function handleSubmit(rawText: string) {
-  const text = rawText.trim();
-  if (!text) { showInputPrompt(); return; }
+// 续行收集：用户在行尾加 \ 时持续追加
+function collectLines(accumulated: string) {
+  rl.question('  · ', async (input) => {
+    const text = input.trim();
+    if (text.endsWith('\\')) {
+      collectLines(accumulated + text.slice(0, -1) + '\n');
+    } else {
+      await submit(accumulated + text);
+      askUser();
+    }
+  });
+}
 
-  if (text === '/exit' || text === '/quit') {
-    console.log(paint(c.gray, '\n再见，祝投资顺利 👋\n'));
-    process.exit(0);
-  }
-
-  isProcessing = true;
-  const spinner = startSpinner('思考中…');
+async function submit(text: string) {
+  const spinner = startSpinner('思考中…\n');
   try {
     const reply = await runAgent(text, history, (label) => spinner.update(label));
     spinner.stop();
@@ -86,86 +110,6 @@ async function handleSubmit(rawText: string) {
       console.error(`\n${paint(c.red, '错误：')}${msg}`);
     }
   }
-  isProcessing = false;
-  showInputPrompt();
-}
-
-function setupInput() {
-  readline.emitKeypressEvents(process.stdin);
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(true);
-    // 启用 Bracketed Paste Mode：粘贴内容被 \x1b[200~ ... \x1b[201~ 包裹
-    process.stdout.write('\x1b[?2004h');
-    process.on('exit', () => process.stdout.write('\x1b[?2004l'));
-  }
-
-  process.stdin.on('keypress', async (_char: string, key: {
-    name: string; ctrl: boolean; shift: boolean; meta: boolean; sequence: string;
-  }) => {
-    if (!key) return;
-
-    // Ctrl+C / Ctrl+D → 退出
-    if (key.ctrl && (key.name === 'c' || key.name === 'd')) {
-      console.log(paint(c.gray, '\n再见，祝投资顺利 👋\n'));
-      process.exit(0);
-    }
-
-    // 处理中忽略输入
-    if (isProcessing) return;
-
-    // 粘贴开始标记
-    if (key.sequence === '\x1b[200~') { isPasting = true; return; }
-    // 粘贴结束标记
-    if (key.sequence === '\x1b[201~') { isPasting = false; return; }
-
-    // Enter → 粘贴中当换行，否则提交
-    if (key.name === 'return' && !key.shift) {
-      if (isPasting) {
-        inputLines.push('');
-        process.stdout.write('\n' + PROMPT_CONT());
-      } else {
-        const text = inputLines.join('\n');
-        process.stdout.write('\n');
-        inputLines = [''];
-        await handleSubmit(text);
-      }
-      return;
-    }
-
-    // Shift+Enter（部分终端支持）或 Ctrl+J → 换行继续输入
-    if ((key.name === 'return' && key.shift) || (key.ctrl && key.name === 'j') || key.sequence === '\n') {
-      inputLines.push('');
-      process.stdout.write('\n' + PROMPT_CONT());
-      return;
-    }
-
-    // Backspace
-    if (key.name === 'backspace') {
-      const last = inputLines[inputLines.length - 1];
-      if (last.length > 0) {
-        // 取最后一个 Unicode 字符（处理 surrogate pairs）
-        const lastChar = [...last].slice(-1)[0];
-        const colWidth = stringWidth(lastChar);
-        inputLines[inputLines.length - 1] = [...last].slice(0, -1).join('');
-        process.stdout.write('\b \b'.repeat(colWidth));
-      } else if (inputLines.length > 1) {
-        inputLines.pop();
-        const prev = inputLines[inputLines.length - 1];
-        process.stdout.write(
-          '\x1b[1A' +
-          '\x1b[2K' +
-          PROMPT_CONT() + prev
-        );
-      }
-      return;
-    }
-
-    // 普通字符
-    if (_char && !key.ctrl && !key.meta) {
-      inputLines[inputLines.length - 1] += _char;
-      process.stdout.write(_char);
-    }
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -176,30 +120,50 @@ async function main() {
   console.log(paint(c.cyan + c.bold, '╔════════════════════════════════╗'));
   console.log(paint(c.cyan + c.bold, '║     AI 基金分析助理  v1.0      ║'));
   console.log(paint(c.cyan + c.bold, '╚════════════════════════════════╝'));
-  console.log(paint(c.gray, '  Ctrl+J 换行，Enter 发送，/exit 退出\n'));
-
-  setupInput();
-  isProcessing = true; // 启动时暂时锁定输入
+  console.log(paint(c.gray, '  行尾加 \\ 可续行，/exit 退出\n'));
 
   const spinner = startSpinner('启动中…');
   try {
     const profile = loadProfile();
-    const initPrompt = profile
-      ? startupSummaryPrompt(JSON.stringify(profile, null, 2))
-      : '请简短自我介绍（2-3句话），并告知用户可以提供持仓信息或截图来开始分析，列出3个典型使用场景。';
 
-    const intro = await runAgent(initPrompt, [], (label) => spinner.update(label));
-    spinner.stop();
-    console.log(`\n${paint(c.cyan + c.bold, '助理')} ${paint(c.gray, '›')}\n`);
-    console.log(renderAnsi(intro));
-    history.push({ role: 'assistant', content: intro });
+    if (profile) {
+      const intro = await runAgent(
+        startupSummaryPrompt(JSON.stringify(profile, null, 2)),
+        [],
+        (label) => spinner.update(label),
+      );
+      spinner.stop();
+      console.log(`\n${paint(c.cyan + c.bold, '助理')} ${paint(c.gray, '›')}\n`);
+      console.log(renderAnsi(intro));
+      history.push({ role: 'assistant', content: intro });
+    } else {
+      spinner.stop();
+      const guide = [
+        `${paint(c.cyan + c.bold, '你好！我是你的 AI 基金分析助理')} 👋`,
+        '',
+        `${paint(c.bold, '还没有持仓记录，可以通过以下方式开始：')}`,
+        '',
+        `  ${paint(c.cyan, '①')} ${paint(c.bold, '上传截图')}   发送持仓截图路径，自动识别基金信息`,
+        `        例：分析持仓 ~/Downloads/screenshot.jpg`,
+        '',
+        `  ${paint(c.cyan, '②')} ${paint(c.bold, '手动录入')}   直接告诉我持仓情况`,
+        `        例：我持有 000001 华夏成长 1万份，成本 1.2 元`,
+        '',
+        `  ${paint(c.cyan, '③')} ${paint(c.bold, '单只分析')}   查询任意基金的历史表现、经理信息等`,
+        `        例：帮我分析一下 110011 这只基金`,
+        '',
+        paint(c.gray, '  输入后我会自动保存你的持仓和投资偏好，下次启动直接展示摘要。'),
+      ].join('\n');
+      console.log(`\n${paint(c.cyan + c.bold, '助理')} ${paint(c.gray, '›')}\n`);
+      console.log(guide);
+      history.push({ role: 'assistant', content: guide });
+    }
   } catch {
     spinner.stop();
     console.log(paint(c.yellow, '（启动加载失败，请确认 server 和 LLM 配置正确）'));
   }
 
-  isProcessing = false;
-  showInputPrompt();
+  askUser();
 }
 
 main();
