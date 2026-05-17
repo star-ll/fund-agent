@@ -154,21 +154,21 @@ cd server && uv sync && cd ..
 
 ### 5. 配置 Nginx + SSL
 
-写入 Nginx 配置 `/etc/nginx/sites-available/ink8.ink`：
+写入 Nginx 配置 `/etc/nginx/sites-available/yujin123.cn`：
 
 ```nginx
 server {
     listen 80;
-    server_name ink8.ink;
+    server_name yujin123.cn;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name ink8.ink;
+    server_name yujin123.cn;
 
-    ssl_certificate     /etc/nginx/ink8.ink/ink8.ink.pem;
-    ssl_certificate_key /etc/nginx/ink8.ink/ink8.ink.key;
+    ssl_certificate     /etc/nginx/yujin123.cn/yujin123.cn.pem;
+    ssl_certificate_key /etc/nginx/yujin123.cn/yujin123.cn.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
@@ -202,7 +202,7 @@ pm2 startup   # 按提示执行输出的命令，设置开机自启
 
 ```bash
 pm2 status
-curl https://ink8.ink/health
+curl https://yujin123.cn/health
 ```
 
 ### 更新部署
@@ -235,7 +235,7 @@ pm2 restart ai-fund-server
 **General Information** → Interactions Endpoint URL 填：
 
 ```
-https://ink8.ink/interactions
+https://yujin123.cn/interactions
 ```
 
 点 Save，Discord 会自动发 PING 验证，通过后生效。

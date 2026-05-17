@@ -121,6 +121,6 @@ export async function startWebhook(): Promise<void> {
   await redis.connect();
   app.listen(config.port, () => {
     console.log(`Webhook server running on port ${config.port}`);
-    console.log(`Interactions endpoint: https://ink8.ink/interactions`);
+    console.log(`Interactions endpoint: POST /interactions (port ${config.port})`);
   });
 }
