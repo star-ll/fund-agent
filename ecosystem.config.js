@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'ai-jijin-webhook',
+      name: 'ai-fund-webhook',
       script: 'dist/webhook-entry.js',
       instances: 1,
       autorestart: true,
@@ -12,7 +12,7 @@ module.exports = {
       },
     },
     {
-      name: 'ai-jijin-server',
+      name: 'ai-fund-server',
       script: 'uv',
       args: 'run uvicorn main:app --host 0.0.0.0 --port 8080',
       cwd: './server',
