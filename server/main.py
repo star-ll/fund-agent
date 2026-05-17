@@ -2,13 +2,14 @@ from contextlib import asynccontextmanager
 from typing import Optional
 import asyncio
 import io
+import json
 import math
 import os
 import time
 from functools import partial
 
 from PIL import Image, ImageFile
-ImageFile.LOAD_TRUNCATED_IMAGES = True  # 兼容部分 App 生成的不规范 JPEG
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), "../.env"))
@@ -16,6 +17,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "../.env"))
 import akshare as ak
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 import pandas as pd
+import redis as redis_lib
 
 from alibabacloud_ocr_api20210707.client import Client as OcrClient
 from alibabacloud_ocr_api20210707 import models as ocr_models
@@ -23,23 +25,34 @@ from alibabacloud_tea_openapi import models as open_api_models
 
 
 # ---------------------------------------------------------------------------
-# 内存缓存
+# Redis 缓存（替代原来的内存 dict）
 # ---------------------------------------------------------------------------
 
-_cache: dict[str, tuple[pd.DataFrame, float]] = {}
-_CACHE_TTL = 3600
+_redis = redis_lib.Redis(
+    host=os.environ.get("REDIS_HOST", "localhost"),
+    port=int(os.environ.get("REDIS_PORT", 6379)),
+    password=os.environ.get("REDIS_PASSWORD") or None,
+    decode_responses=True,
+)
+
+_TTL = {
+    "fund_daily":    86400,
+    "fund_manager":  86400,
+    "fund_rank":     14400,
+    "fund_nav":      14400,
+    "fund_estimate":  900,
+}
 
 
 def _get_cached(key: str) -> pd.DataFrame | None:
-    if key in _cache:
-        df, ts = _cache[key]
-        if time.time() - ts < _CACHE_TTL:
-            return df
+    raw = _redis.get(key)
+    if raw:
+        return pd.DataFrame(json.loads(raw))
     return None
 
 
-def _set_cached(key: str, df: pd.DataFrame) -> None:
-    _cache[key] = (df, time.time())
+def _set_cached(key: str, df: pd.DataFrame, ttl: int = 3600) -> None:
+    _redis.setex(key, ttl, json.dumps(df.to_dict(orient="records"), ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------
@@ -51,12 +64,12 @@ async def _run(fn, *args, **kwargs) -> pd.DataFrame:
     return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
 
 
-async def _cached_run(key: str, fn, *args, **kwargs) -> pd.DataFrame:
+async def _cached_run(key: str, ttl_key: str, fn, *args, **kwargs) -> pd.DataFrame:
     cached = _get_cached(key)
     if cached is not None:
         return cached
     df = await _run(fn, *args, **kwargs)
-    _set_cached(key, df)
+    _set_cached(key, df, _TTL.get(ttl_key, 3600))
     return df
 
 
@@ -98,7 +111,7 @@ def health():
 
 @app.delete("/cache")
 def clear_cache():
-    _cache.clear()
+    _redis.flushdb()
     return {"cleared": True}
 
 
@@ -109,7 +122,7 @@ def clear_cache():
 @app.get("/fund/info")
 async def fund_info(fund_code: str = Query(..., description="基金代码，例如 000001")):
     try:
-        df = await _cached_run("fund_daily", ak.fund_open_fund_daily_em)
+        df = await _cached_run("fund_daily", "fund_daily", ak.fund_open_fund_daily_em)
         row = df[df["基金代码"] == fund_code]
         if row.empty:
             raise HTTPException(status_code=404, detail=f"基金 {fund_code} 不存在")
@@ -156,7 +169,7 @@ async def fund_manager(
     fund_code: Optional[str] = Query(None, description="基金代码，不传则返回全部经理"),
 ):
     try:
-        df = await _cached_run("fund_manager", ak.fund_manager_em)
+        df = await _cached_run("fund_manager", "fund_manager", ak.fund_manager_em)
         if fund_code:
             mask = df["现任基金代码"].astype(str).str.contains(fund_code, na=False)
             df = df[mask]
@@ -201,7 +214,7 @@ async def fund_rank(
     if symbol not in FUND_TYPES:
         raise HTTPException(status_code=400, detail=f"symbol 必须为 {FUND_TYPES} 之一")
     try:
-        df = await _cached_run(f"fund_rank_{symbol}", ak.fund_open_fund_rank_em, symbol=symbol)
+        df = await _cached_run(f"fund_rank_{symbol}", "fund_rank", ak.fund_open_fund_rank_em, symbol=symbol)
         if df.empty:
             return []
         return _to_json(df)

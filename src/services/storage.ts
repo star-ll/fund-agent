@@ -21,10 +21,7 @@ export interface UserProfile {
   updated_at: string;
 }
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
+// CLI 模式：从本地文件读取
 export function loadProfile(): UserProfile | null {
   try {
     if (!fs.existsSync(PROFILE_PATH)) return null;
@@ -34,11 +31,11 @@ export function loadProfile(): UserProfile | null {
   }
 }
 
+// CLI 模式：保存到本地文件
 export function saveProfile(patch: Partial<Omit<UserProfile, 'updated_at'>>): UserProfile {
-  ensureDataDir();
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   const existing = loadProfile() ?? { holdings: [], updated_at: '' };
 
-  // 合并 holdings：按 fund_code 去重，新数据覆盖旧数据
   if (patch.holdings) {
     const map = new Map(existing.holdings.map((h) => [h.fund_code, h]));
     for (const h of patch.holdings) map.set(h.fund_code, { ...map.get(h.fund_code), ...h });
