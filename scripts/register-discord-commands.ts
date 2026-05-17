@@ -27,6 +27,12 @@ async function registerCommands() {
 }
 
 registerCommands().catch(err => {
-  console.error('注册失败：', err.response?.data ?? err.message);
+  console.error('注册失败：');
+  console.error('status:', err.response?.status);
+  console.error('data:', JSON.stringify(err.response?.data, null, 2));
+  console.error('message:', err.message);
+  console.error('code:', err.code);
+  console.error('appId:', config.discord.appId || '(空)');
+  console.error('botToken:', config.discord.botToken ? config.discord.botToken.slice(0, 10) + '…' : '(空)');
   process.exit(1);
 });
