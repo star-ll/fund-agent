@@ -8,6 +8,7 @@ import { getFundPortfolio, analyzePortfolio } from '../services/portfolio';
 import { extractText } from '../services/ocr';
 import { loadProfile, saveProfile } from '../services/storage';
 import { loadProfileFromDB, saveProfileToDB } from '../services/user';
+import { logger } from '../utils/logger';
 
 const client = new OpenAI({ baseURL: config.llm.baseURL, apiKey: config.llm.apiKey });
 
@@ -50,6 +51,9 @@ export async function runAgent(
     progressCb = historyOrOptions.onProgress;
   }
 
+  const tag = userId ? `agent:${userId}` : 'agent:cli';
+  logger.info(tag, '收到问题', userMessage);
+
   const messages: Message[] = [
     { role: 'system', content: systemPrompt },
     ...history,
@@ -57,24 +61,47 @@ export async function runAgent(
   ];
 
   for (let i = 0; i < 5; i++) {
+    logger.info(tag, `第 ${i + 1} 轮思考`);
     progressCb?.('思考中…');
-    const response = await client.chat.completions.create({
-      model: config.llm.model,
-      messages,
-      tools,
-    });
+
+    let response: OpenAI.Chat.ChatCompletion;
+    try {
+      response = await client.chat.completions.create({
+        model: config.llm.model,
+        messages,
+        tools,
+      });
+    } catch (err) {
+      logger.error(tag, 'LLM 调用失败', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
 
     const choice = response.choices[0];
     messages.push(choice.message);
 
     if (choice.finish_reason !== 'tool_calls' || !choice.message.tool_calls) {
-      return choice.message.content ?? '';
+      const reply = choice.message.content ?? '';
+      logger.info(tag, '回答完成', reply.slice(0, 200) + (reply.length > 200 ? '…' : ''));
+      return reply;
     }
+
+    logger.info(tag, `本轮工具调用数: ${choice.message.tool_calls.length}`);
 
     const toolResults: { tool_call_id: string; result: unknown }[] = [];
     for (const tc of choice.message.tool_calls) {
+      const args = JSON.parse(tc.function.arguments);
+      logger.info(tag, `工具调用: ${tc.function.name}`, args);
       progressCb?.(TOOL_LABELS[tc.function.name] ?? `${tc.function.name}…`);
-      const result = await dispatchTool(tc.function.name, JSON.parse(tc.function.arguments), userId);
+
+      let result: unknown;
+      try {
+        result = await dispatchTool(tc.function.name, args, userId);
+        logger.debug(tag, `工具返回: ${tc.function.name}`, result);
+      } catch (err) {
+        logger.error(tag, `工具异常: ${tc.function.name}`, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+
       toolResults.push({ tool_call_id: tc.id, result });
     }
 
@@ -83,6 +110,7 @@ export async function runAgent(
     }
   }
 
+  logger.warn(tag, '超出最大轮数');
   return '分析超出最大轮数，请重试。';
 }
 

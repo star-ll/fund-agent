@@ -6,6 +6,7 @@ import { startupSummaryPrompt } from './prompts';
 import { verifyDiscordSignature } from './discord/verify';
 import { sendFollowup } from './discord/api';
 import { config } from './utils/config';
+import { logger } from './utils/logger';
 import type OpenAI from 'openai';
 
 type Message = OpenAI.Chat.ChatCompletionMessageParam;
@@ -56,6 +57,7 @@ app.post('/interactions', async (req, res) => {
 
   // PING — URL 验证
   if (body.type === 1) {
+    logger.info('webhook', 'Discord PING 验证');
     res.json({ type: 1 });
     return;
   }
@@ -65,21 +67,27 @@ app.post('/interactions', async (req, res) => {
     const userId = body.member?.user?.id ?? body.user?.id ?? 'unknown';
     const question: string = body.data?.options?.find((o: any) => o.name === 'question')?.value ?? '';
 
+    logger.info('webhook', `收到指令 /ask`, { userId, question });
+
     if (!question) {
+      logger.warn('webhook', `用户 ${userId} 未填写问题`);
       res.json({ type: 4, data: { content: '请输入问题，例如：/ask 000001基金怎么样' } });
       return;
     }
 
     // 立即返回 deferred response，告知 Discord 稍等
     res.json({ type: 5 });
+    logger.info('webhook', `已返回 deferred response，开始异步处理 userId=${userId}`);
 
     // 异步处理，不阻塞响应
     setImmediate(async () => {
       try {
+        logger.info('webhook', `加载历史和档案 userId=${userId}`);
         const [history, profile] = await Promise.all([
           getHistory(userId),
           loadProfileFromDB(userId),
         ]);
+        logger.info('webhook', `历史消息数: ${history.length}，档案: ${profile ? '有' : '无'}`);
 
         const effectiveHistory: Message[] = history.length === 0 && profile
           ? [{ role: 'assistant', content: startupSummaryPrompt(JSON.stringify(profile)) }]
@@ -99,16 +107,21 @@ app.post('/interactions', async (req, res) => {
 
         // Discord 消息上限 2000 字，超出则截断
         const content = reply.length > 2000 ? reply.slice(0, 1997) + '...' : reply;
+        logger.info('webhook', `发送回复 userId=${userId}，长度=${content.length}`);
         await sendFollowup(body.token, content);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        await sendFollowup(body.token, `分析出错：${msg}`).catch(() => {});
+        logger.error('webhook', `处理异常 userId=${userId}`, err instanceof Error ? err.stack : msg);
+        await sendFollowup(body.token, `分析出错：${msg}`).catch((e) => {
+          logger.error('webhook', 'sendFollowup 失败', e instanceof Error ? e.message : String(e));
+        });
       }
     });
 
     return;
   }
 
+  logger.warn('webhook', `未知 interaction type: ${body.type}`);
   res.status(400).send('unknown interaction type');
 });
 
@@ -120,7 +133,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 export async function startWebhook(): Promise<void> {
   await redis.connect();
   app.listen(config.port, () => {
-    console.log(`Webhook server running on port ${config.port}`);
-    console.log(`Interactions endpoint: POST /interactions (port ${config.port})`);
+    logger.info('webhook', `服务启动，端口 ${config.port}`);
+    logger.info('webhook', `Interactions endpoint: POST /interactions`);
   });
 }

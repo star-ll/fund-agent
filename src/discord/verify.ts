@@ -10,10 +10,16 @@ export function verifyDiscordSignature(
   body: string,
 ): boolean {
   try {
-    const spkiDer = Buffer.concat([SPKI_PREFIX, Buffer.from(publicKey, 'hex')]);
+    const keyBuf = Buffer.from(publicKey, 'hex');
+    console.log('[verify] publicKey len:', keyBuf.length, 'raw:', publicKey.slice(0, 8) + '...');
+    console.log('[verify] signature len:', signature.length, 'timestamp:', timestamp);
+    const spkiDer = Buffer.concat([SPKI_PREFIX, keyBuf]);
     const key = crypto.createPublicKey({ key: spkiDer, format: 'der', type: 'spki' });
-    return crypto.verify(null, Buffer.from(timestamp + body), key, Buffer.from(signature, 'hex'));
-  } catch {
+    const result = crypto.verify(null, Buffer.from(timestamp + body), key, Buffer.from(signature, 'hex'));
+    console.log('[verify] result:', result);
+    return result;
+  } catch (e) {
+    console.log('[verify] error:', e);
     return false;
   }
 }
