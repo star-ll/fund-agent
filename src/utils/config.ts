@@ -22,12 +22,10 @@ export const config = {
     port: parseInt(process.env.REDIS_PORT ?? '6379'),
     password: process.env.REDIS_PASSWORD || undefined,
   },
-  wework: {
-    corpId: process.env.WECOM_CORP_ID ?? '',
-    agentId: process.env.WECOM_AGENT_ID ?? '',
-    secret: process.env.WECOM_SECRET ?? '',
-    token: process.env.WECOM_TOKEN ?? '',
-    encodingAESKey: process.env.WECOM_ENCODING_AES_KEY ?? '',
+  discord: {
+    publicKey: process.env.DISCORD_PUBLIC_KEY ?? '',
+    appId: process.env.DISCORD_APP_ID ?? '',
+    botToken: process.env.DISCORD_BOT_TOKEN ?? '',
   },
   port: parseInt(process.env.PORT ?? '3000'),
 };

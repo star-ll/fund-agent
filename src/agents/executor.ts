@@ -27,8 +27,8 @@ const TOOL_LABELS: Record<string, string> = {
 export interface RunAgentOptions {
   history?: Message[];
   onProgress?: (label: string) => void;
-  // 企微模式传入 userId，使用 MySQL；CLI 模式不传，使用本地文件
-  weworkUserId?: string;
+  // webhook 模式传入 userId，使用 MySQL；CLI 模式不传，使用本地文件
+  userId?: string;
 }
 
 export async function runAgent(
@@ -38,7 +38,7 @@ export async function runAgent(
 ): Promise<string> {
   // 兼容旧调用方式 runAgent(msg, history, onProgress)
   let history: Message[];
-  let weworkUserId: string | undefined;
+  let userId: string | undefined;
   let progressCb: ((label: string) => void) | undefined;
 
   if (Array.isArray(historyOrOptions)) {
@@ -46,7 +46,7 @@ export async function runAgent(
     progressCb = onProgress;
   } else {
     history = historyOrOptions.history ?? [];
-    weworkUserId = historyOrOptions.weworkUserId;
+    userId = historyOrOptions.userId;
     progressCb = historyOrOptions.onProgress;
   }
 
@@ -74,7 +74,7 @@ export async function runAgent(
     const toolResults: { tool_call_id: string; result: unknown }[] = [];
     for (const tc of choice.message.tool_calls) {
       progressCb?.(TOOL_LABELS[tc.function.name] ?? `${tc.function.name}…`);
-      const result = await dispatchTool(tc.function.name, JSON.parse(tc.function.arguments), weworkUserId);
+      const result = await dispatchTool(tc.function.name, JSON.parse(tc.function.arguments), userId);
       toolResults.push({ tool_call_id: tc.id, result });
     }
 
@@ -89,7 +89,7 @@ export async function runAgent(
 async function dispatchTool(
   name: string,
   args: Record<string, unknown>,
-  weworkUserId?: string,
+  userId?: string,
 ): Promise<unknown> {
   switch (name) {
     case 'get_fund_info':
@@ -111,14 +111,14 @@ async function dispatchTool(
       return getFundPortfolio(args.fund_code as string, args.date as string);
 
     case 'get_user_profile':
-      if (weworkUserId) {
-        return (await loadProfileFromDB(weworkUserId)) ?? { message: '暂无档案，请先提供持仓信息。' };
+      if (userId) {
+        return (await loadProfileFromDB(userId)) ?? { message: '暂无档案，请先提供持仓信息。' };
       }
       return loadProfile() ?? { message: '暂无用户档案，请先告知持仓信息或上传截图。' };
 
     case 'save_user_profile':
-      if (weworkUserId) {
-        return saveProfileToDB(weworkUserId, args as Parameters<typeof saveProfileToDB>[1]);
+      if (userId) {
+        return saveProfileToDB(userId, args as Parameters<typeof saveProfileToDB>[1]);
       }
       return saveProfile(args as Parameters<typeof saveProfile>[0]);
 

@@ -1,6 +1,6 @@
 # AI 基金助理
 
-基于 LLM 的基金分析助手，支持企业微信自建应用和本地 CLI 两种使用方式。用户可以通过自然语言查询基金信息、分析持仓组合、识别持仓截图，AI 会自动调用相关工具完成分析并回复。
+基于 LLM 的基金分析助手，支持 Discord 和本地 CLI 两种使用方式。用户可以通过自然语言查询基金信息、分析持仓组合、识别持仓截图，AI 会自动调用相关工具完成分析并回复。
 
 ## 功能
 
@@ -9,12 +9,12 @@
 - **持仓分析**：多只基金组合的整体收益、回撤、波动率
 - **OCR 识别**：上传持仓截图，自动提取基金代码和份额，直接进行分析
 - **用户档案**：记录持仓、风险偏好、投资年限等信息，支持跨对话记忆
-- **企微集成**：作为企业微信自建应用接收消息，异步处理后主动推送回复
+- **Discord 集成**：通过 `/ask` Slash Command 接收消息，异步处理后回复
 
 ## 架构
 
 ```
-企业微信 / CLI
+Discord / CLI
      │
      ▼
 Node.js Webhook (port 3000)   ←→   MySQL（用户档案、持仓）
@@ -41,12 +41,12 @@ Python AKShare Server (port 8080)   ←  基金数据 + 阿里云 OCR
 │   │   ├── manager.ts          # 基金经理数据
 │   │   ├── portfolio.ts        # 持仓分析
 │   │   └── ocr.ts              # OCR 调用
+│   ├── discord/
+│   │   ├── verify.ts           # Ed25519 签名验证
+│   │   └── api.ts              # Discord followup 消息发送
 │   ├── tools/index.ts          # LLM tool 定义
-│   ├── wecom/
-│   │   ├── api.ts              # 企微消息发送
-│   │   └── crypto.ts           # 企微加解密
 │   ├── prompts/                # system prompt
-│   ├── webhook.ts              # Express 服务（企微模式）
+│   ├── webhook.ts              # Express 服务（Discord 模式）
 │   ├── webhook-entry.ts        # webhook 入口
 │   └── index.ts                # CLI 入口
 ├── server/
@@ -76,7 +76,7 @@ mysql -u root -p < schema.sql
 # 启动 Python 数据服务
 npm run server:dev
 
-# 启动企微 webhook（另一个终端）
+# 启动 Discord webhook（另一个终端）
 npm run webhook
 
 # 或者使用 CLI 模式
@@ -93,6 +93,9 @@ npm run dev
 | `AKSHARE_BASE_URL` | Python 数据服务地址，默认 `http://localhost:8080` |
 | `ALIYUN_ACCESS_KEY_ID` | 阿里云 AccessKey（OCR 功能） |
 | `ALIYUN_ACCESS_KEY_SECRET` | 阿里云 AccessSecret |
+| `DISCORD_PUBLIC_KEY` | Discord 应用 Public Key（General Information 页） |
+| `DISCORD_APP_ID` | Discord 应用 ID |
+| `DISCORD_BOT_TOKEN` | Discord Bot Token |
 | `MYSQL_HOST` | MySQL 主机 |
 | `MYSQL_PORT` | MySQL 端口，默认 3306 |
 | `MYSQL_USER` | MySQL 用户名 |
@@ -101,11 +104,6 @@ npm run dev
 | `REDIS_HOST` | Redis 主机，默认 `localhost` |
 | `REDIS_PORT` | Redis 端口，默认 6379 |
 | `REDIS_PASSWORD` | Redis 密码（可选） |
-| `WEWORK_CORP_ID` | 企业微信企业 ID |
-| `WEWORK_AGENT_ID` | 自建应用 AgentID |
-| `WEWORK_SECRET` | 自建应用 Secret |
-| `WEWORK_TOKEN` | 消息接收 Token |
-| `WEWORK_ENCODING_AES_KEY` | 消息加解密 Key |
 | `PORT` | HTTP 服务端口，默认 3000 |
 
 ## 部署
@@ -148,28 +146,15 @@ mysql -u root -p < schema.sql
 
 ### 4. 安装依赖并构建
 
-构建 NodeJS 服务
-
-需要提前安装 node
-
 ```bash
 npm ci
 npm run build
-```
-
-构建Python服务
-
-需要提前安装 python3 和 uv
-
-```bash
 cd server && uv sync && cd ..
 ```
 
 ### 5. 配置 Nginx + SSL
 
-5.1 申请 SSL 证书：
-
-5.2 写入 Nginx 配置 `/etc/nginx/sites-available/ink8.ink`：
+写入 Nginx 配置 `/etc/nginx/sites-available/ink8.ink`：
 
 ```nginx
 server {
@@ -182,17 +167,17 @@ server {
     listen 443 ssl;
     server_name ink8.ink;
 
-    ssl_certificate     /etc/letsencrypt/live/ink8.ink/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/ink8.ink/privkey.pem;
+    ssl_certificate     /etc/nginx/ink8.ink/ink8.ink.pem;
+    ssl_certificate_key /etc/nginx/ink8.ink/ink8.ink.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
-    location /fund {
+    location /interactions {
         proxy_pass         http://127.0.0.1:3000;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   X-Forwarded-Proto $scheme;
-        proxy_read_timeout 120s;
+        proxy_read_timeout 10s;
     }
 
     location /health {
@@ -201,22 +186,11 @@ server {
 }
 ```
 
-5.3 启动 nginx
-
 ```bash
-ln -s /etc/nginx/sites-available/ink8.ink /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 
 ### 6. 启动服务
-
-需要提前安装 pm2:
-
-```bash
-npm i -g pm2
-```
-
-启动服务
 
 ```bash
 pm2 start ecosystem.config.js
@@ -227,21 +201,14 @@ pm2 startup   # 按提示执行输出的命令，设置开机自启
 ### 7. 验证
 
 ```bash
-# 检查进程状态
 pm2 status
-
-# 查看日志
-pm2 logs ai-fund-webhook
-pm2 logs ai-fund-server
-
-# 健康检查
 curl https://ink8.ink/health
 ```
 
 ### 更新部署
 
 ```bash
-cd /opt/ai-fund
+cd /projects/fund-agent
 git pull
 npm ci && npm run build
 pm2 restart ai-fund-webhook
@@ -251,10 +218,48 @@ cd server && uv sync && cd ..
 pm2 restart ai-fund-server
 ```
 
-## 企业微信配置
+## Discord 配置
 
-在企业微信管理后台 → 应用管理 → 自建应用 → 接收消息，填写：
+### 1. 创建应用
 
-- **URL**：`https://ink8.ink/fund`
-- **Token**：对应 `WEWORK_TOKEN`
-- **EncodingAESKey**：对应 `WEWORK_ENCODING_AES_KEY`
+[Discord Developer Portal](https://discord.com/developers/applications) → New Application
+
+### 2. 获取凭据
+
+- **General Information** → 复制 `Public Key` → 填入 `DISCORD_PUBLIC_KEY`
+- **General Information** → 复制 `Application ID` → 填入 `DISCORD_APP_ID`
+- **Bot** → Reset Token → 填入 `DISCORD_BOT_TOKEN`
+
+### 3. 配置 Interactions Endpoint
+
+**General Information** → Interactions Endpoint URL 填：
+
+```
+https://ink8.ink/interactions
+```
+
+点 Save，Discord 会自动发 PING 验证，通过后生效。
+
+### 4. 注册 Slash Command（一次性）
+
+```bash
+curl -X POST https://discord.com/api/v10/applications/YOUR_APP_ID/commands \
+  -H "Authorization: Bot YOUR_BOT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "ask",
+    "description": "问 AI 基金助理",
+    "options": [{
+      "name": "question",
+      "type": 3,
+      "description": "你的问题，例如：000001基金怎么样",
+      "required": true
+    }]
+  }'
+```
+
+### 5. 邀请 Bot 到频道
+
+Developer Portal → OAuth2 → URL Generator → 勾选 `bot` 和 `applications.commands` → 生成链接 → 访问链接邀请到目标服务器。
+
+使用方式：在频道输入 `/ask 帮我分析000001基金`
