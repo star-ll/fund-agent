@@ -12,6 +12,7 @@ from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 from dotenv import load_dotenv
+# 本地开发时从上级目录加载 .env，容器内由 docker-compose env_file 注入
 load_dotenv(os.path.join(os.path.dirname(__file__), "../.env"))
 
 import akshare as ak
