@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS ai_jijin CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE ai_jijin;
+CREATE DATABASE IF NOT EXISTS ai_fund CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE ai_fund;
 
 CREATE TABLE IF NOT EXISTS users (
   id               INT UNSIGNED    NOT NULL AUTO_INCREMENT,

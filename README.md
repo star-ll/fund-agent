@@ -100,7 +100,7 @@ npm run dev
 | `MYSQL_PORT` | MySQL 端口，默认 3306 |
 | `MYSQL_USER` | MySQL 用户名 |
 | `MYSQL_PASSWORD` | MySQL 密码 |
-| `MYSQL_DATABASE` | 数据库名，默认 `ai_jijin` |
+| `MYSQL_DATABASE` | 数据库名，默认 `ai_fund` |
 | `REDIS_HOST` | Redis 主机，默认 `localhost` |
 | `REDIS_PORT` | Redis 端口，默认 6379 |
 | `REDIS_PASSWORD` | Redis 密码（可选） |

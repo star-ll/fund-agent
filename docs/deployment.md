@@ -16,8 +16,8 @@ systemctl enable docker && systemctl start docker
 ### 1. 拉取代码
 
 ```bash
-git clone <your-repo> /projects/ai-jijin
-cd /projects/ai-jijin
+git clone <your-repo> /projects/ai-fund
+cd /projects/ai-fund
 ```
 
 ### 2. 配置环境变量

@@ -15,7 +15,7 @@ export const config = {
     port: parseInt(process.env.MYSQL_PORT ?? '3306'),
     user: process.env.MYSQL_USER ?? 'root',
     password: process.env.MYSQL_PASSWORD ?? '',
-    database: process.env.MYSQL_DATABASE ?? 'ai_jijin',
+    database: process.env.MYSQL_DATABASE ?? 'ai_fund',
   },
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',
