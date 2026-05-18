@@ -35,13 +35,14 @@ services:
     image: mysql:8.0
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-}
+      MYSQL_ALLOW_EMPTY_PASSWORD: ${MYSQL_PASSWORD:+no}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_fund}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=${MYSQL_PASSWORD:-}"]
       interval: 10s
       timeout: 5s
       retries: 5
