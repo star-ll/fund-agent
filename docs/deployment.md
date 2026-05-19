@@ -50,7 +50,7 @@ curl http://localhost:3000/health
 
 ```bash
 git pull
-docker compose up -d --build
+docker compose down && docker compose up -d --build
 ```
 
 ---
@@ -103,21 +103,21 @@ cd server && uv sync && cd ..
 
 ### 5. 配置 Nginx + SSL
 
-写入 Nginx 配置 `/etc/nginx/sites-available/yujin123.cn`：
+写入 Nginx 配置 `/etc/nginx/sites-available/<your_domain>`：
 
 ```nginx
 server {
     listen 80;
-    server_name yujin123.cn;
+    server_name <your_domain>;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name yujin123.cn;
+    server_name <your_domain>;
 
-    ssl_certificate     /etc/nginx/yujin123.cn/yujin123.cn.pem;
-    ssl_certificate_key /etc/nginx/yujin123.cn/yujin123.cn.key;
+    ssl_certificate     /etc/nginx/<your_domain>/<your_domain>.pem;
+    ssl_certificate_key /etc/nginx/<your_domain>/<your_domain>.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
@@ -151,7 +151,7 @@ pm2 startup   # 按提示执行输出的命令，设置开机自启
 
 ```bash
 pm2 status
-curl https://yujin123.cn/health
+curl https://<your_domain>/health
 ```
 
 ### 更新部署
@@ -186,7 +186,7 @@ pm2 restart ai-fund-server
 **General Information** → Interactions Endpoint URL 填：
 
 ```
-https://yujin123.cn/interactions
+https://<your_domain>/interactions
 ```
 
 点 Save，Discord 会自动发 PING 验证，通过后生效。
