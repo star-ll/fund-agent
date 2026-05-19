@@ -1,10 +1,13 @@
+import * as path from 'path';
 import * as readline from 'readline';
-import { runAgent } from './agents/executor';
-import { loadProfile } from './services/storage';
-import { startupSummaryPrompt } from './prompts';
+import { runAgent } from '../../src/agents/executor';
+import { loadProfile } from '../../src/services/storage';
+import { buildSystemPrompt, startupSummaryPrompt } from '../../src/prompts';
 import type OpenAI from 'openai';
 
 type Message = OpenAI.Chat.ChatCompletionMessageParam;
+
+const systemPrompt = buildSystemPrompt(path.join(__dirname, 'prompts/output-format.md'));
 
 // ---------------------------------------------------------------------------
 // ANSI 颜色
@@ -36,7 +39,6 @@ function startSpinner(initialLabel: string) {
   }, 80);
   return {
     update: (next: string) => {
-      // 换新步骤时先落一行，让每个步骤独占一行
       process.stdout.write(`\r\x1b[2K${paint(c.gray, '✓')} ${paint(c.dim, label)}\n`);
       label = next;
       i = 0;
@@ -93,7 +95,7 @@ function collectLines(accumulated: string) {
 async function submit(text: string) {
   const spinner = startSpinner('思考中…\n');
   try {
-    const reply = await runAgent(text, history, (label) => spinner.update(label));
+    const reply = await runAgent(text, { history, systemPrompt, onProgress: (label) => spinner.update(label) });
     spinner.stop();
     console.log(`\n${paint(c.cyan + c.bold, '助理')} ${paint(c.gray, '›')}\n`);
     console.log(renderAnsi(reply));
@@ -129,8 +131,7 @@ async function main() {
     if (profile) {
       const intro = await runAgent(
         startupSummaryPrompt(JSON.stringify(profile, null, 2)),
-        [],
-        (label) => spinner.update(label),
+        { history: [], systemPrompt, onProgress: (label) => spinner.update(label) },
       );
       spinner.stop();
       console.log(`\n${paint(c.cyan + c.bold, '助理')} ${paint(c.gray, '›')}\n`);

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { config } from '../utils/config';
+import { config } from '../../src/utils/config';
 
 const BASE = 'https://discord.com/api/v10';
 

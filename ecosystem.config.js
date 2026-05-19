@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'ai-fund-webhook',
-      script: 'dist/webhook-entry.js',
+      script: 'dist/packages/discord/webhook-entry.js',
       instances: 1,
       autorestart: true,
       watch: false,

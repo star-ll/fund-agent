@@ -1,17 +1,19 @@
+import * as path from 'path';
 import express from 'express';
-import { redis } from './services/redis';
-import { runAgent } from './agents/executor';
-import { loadProfileFromDB } from './services/user';
-import { startupSummaryPrompt } from './prompts';
-import { verifyDiscordSignature } from './discord/verify';
-import { sendFollowup } from './discord/api';
-import { config } from './utils/config';
-import { logger } from './utils/logger';
+import { redis } from '../../src/services/redis';
+import { runAgent } from '../../src/agents/executor';
+import { loadProfileFromDB } from '../../src/services/user';
+import { buildSystemPrompt, startupSummaryPrompt } from '../../src/prompts';
+import { verifyDiscordSignature } from './verify';
+import { sendFollowup } from './api';
+import { config } from '../../src/utils/config';
+import { logger } from '../../src/utils/logger';
 import type OpenAI from 'openai';
 
 type Message = OpenAI.Chat.ChatCompletionMessageParam;
 
 const app = express();
+const systemPrompt = buildSystemPrompt(path.join(__dirname, 'prompts/output-format.md'));
 
 // Discord 签名验证必须拿到原始 body，不能用 express.json() 先解析
 app.use(express.raw({ type: 'application/json' }));
@@ -96,6 +98,7 @@ app.post('/interactions', async (req, res) => {
         const reply = await runAgent(question, {
           history: effectiveHistory,
           userId,
+          systemPrompt,
         });
 
         const newHistory: Message[] = [

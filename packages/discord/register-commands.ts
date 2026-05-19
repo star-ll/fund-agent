@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { config } from '../src/utils/config';
+import { config } from '../../src/utils/config';
 
 const BASE = 'https://discord.com/api/v10';
 

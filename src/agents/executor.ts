@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { config } from '../utils/config';
 import { tools } from '../tools';
-import { systemPrompt } from '../prompts';
+import { coreSystemPrompt } from '../prompts';
 import { getFundInfo, getFundNav, calcMetrics } from '../services/fund';
 import { getFundManager } from '../services/manager';
 import { getFundPortfolio, analyzePortfolio } from '../services/portfolio';
@@ -28,6 +28,7 @@ const TOOL_LABELS: Record<string, string> = {
 export interface RunAgentOptions {
   history?: Message[];
   onProgress?: (label: string) => void;
+  systemPrompt?: string;
   // webhook 模式传入 userId，使用 MySQL；CLI 模式不传，使用本地文件
   userId?: string;
 }
@@ -41,6 +42,7 @@ export async function runAgent(
   let history: Message[];
   let userId: string | undefined;
   let progressCb: ((label: string) => void) | undefined;
+  let effectiveSystemPrompt = coreSystemPrompt;
 
   if (Array.isArray(historyOrOptions)) {
     history = historyOrOptions;
@@ -49,13 +51,14 @@ export async function runAgent(
     history = historyOrOptions.history ?? [];
     userId = historyOrOptions.userId;
     progressCb = historyOrOptions.onProgress;
+    effectiveSystemPrompt = historyOrOptions.systemPrompt ?? coreSystemPrompt;
   }
 
   const tag = userId ? `agent:${userId}` : 'agent:cli';
   logger.info(tag, '收到问题', userMessage);
 
   const messages: Message[] = [
-    { role: 'system', content: systemPrompt },
+    { role: 'system', content: effectiveSystemPrompt },
     ...history,
     { role: 'user', content: userMessage },
   ];
