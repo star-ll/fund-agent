@@ -1,35 +1,20 @@
 import * as path from 'path';
 import express from 'express';
-import { redis } from '../../src/services/redis';
 import { runAgent } from '../../src/agents/executor';
 import { loadProfileFromDB } from '../../src/services/user';
 import { buildSystemPrompt, startupSummaryPrompt } from '../../src/prompts';
 import { verifyDiscordSignature } from './verify';
 import { sendFollowup } from './api';
+import { getHistory, setHistory } from './history';
+import { redis } from '../../src/services/redis';
 import { config } from '../../src/utils/config';
 import { logger } from '../../src/utils/logger';
-import type OpenAI from 'openai';
-
-type Message = OpenAI.Chat.ChatCompletionMessageParam;
 
 const app = express();
 const systemPrompt = buildSystemPrompt(path.join(__dirname, 'prompts/output-format.md'));
 
 // Discord 签名验证必须拿到原始 body，不能用 express.json() 先解析
 app.use(express.raw({ type: 'application/json' }));
-
-const HISTORY_TTL = 60 * 60 * 24;
-const HISTORY_KEY = (uid: string) => `discord:history:${uid}`;
-
-async function getHistory(userId: string): Promise<Message[]> {
-  const raw = await redis.get(HISTORY_KEY(userId));
-  return raw ? JSON.parse(raw) : [];
-}
-
-async function setHistory(userId: string, history: Message[]): Promise<void> {
-  const trimmed = history.slice(-20);
-  await redis.setex(HISTORY_KEY(userId), HISTORY_TTL, JSON.stringify(trimmed));
-}
 
 // ---------------------------------------------------------------------------
 // POST /interactions  —  Discord interactions endpoint
@@ -91,20 +76,23 @@ app.post('/interactions', async (req, res) => {
         ]);
         logger.info('webhook', `历史消息数: ${history.length}，档案: ${profile ? '有' : '无'}`);
 
-        const effectiveHistory: Message[] = history.length === 0 && profile
-          ? [{ role: 'assistant', content: startupSummaryPrompt(JSON.stringify(profile)) }]
+        const effectiveHistory = history.length === 0 && profile
+          ? [{ role: 'assistant' as const, content: startupSummaryPrompt(JSON.stringify(profile)) }]
           : history;
 
         const reply = await runAgent(question, {
           history: effectiveHistory,
           userId,
           systemPrompt,
+          onProgress: (label) => {
+            sendFollowup(body.token, `⏳ ${label}`).catch(() => {});
+          },
         });
 
-        const newHistory: Message[] = [
+        const newHistory = [
           ...effectiveHistory,
-          { role: 'user', content: question },
-          { role: 'assistant', content: reply },
+          { role: 'user' as const, content: question },
+          { role: 'assistant' as const, content: reply },
         ];
         await setHistory(userId, newHistory);
 
