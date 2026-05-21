@@ -8,6 +8,7 @@ import { getFundPortfolio, analyzePortfolio } from '../services/portfolio';
 import { extractText } from '../services/ocr';
 import { loadProfile, saveProfile } from '../services/storage';
 import { loadProfileFromDB, saveProfileToDB } from '../services/user';
+import { webSearch } from '../services/search';
 import { logger } from '../utils/logger';
 
 const client = new OpenAI({ baseURL: config.llm.baseURL, apiKey: config.llm.apiKey });
@@ -23,6 +24,7 @@ const TOOL_LABELS: Record<string, string> = {
   save_user_profile:  '保存用户档案…',
   read_image:         '识别图片文字…',
   analyze_portfolio:  '分析持仓组合…',
+  web_search:         '搜索互联网…',
 };
 
 export interface RunAgentOptions {
@@ -164,6 +166,9 @@ async function dispatchTool(
           cost: h.cost,
         })),
       );
+
+    case 'web_search':
+      return webSearch(args.query as string, args.max_results as number | undefined);
 
     default:
       throw new Error(`Unknown tool: ${name}`);

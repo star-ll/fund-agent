@@ -1,6 +1,7 @@
 import type OpenAI from 'openai';
+import { config } from '../utils/config';
 
-export const tools: OpenAI.Chat.ChatCompletionTool[] = [
+const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
@@ -111,14 +112,6 @@ export const tools: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'get_user_profile',
-      description: '读取用户本地保存的持仓和个人信息档案。当用户询问自己的持仓、风险偏好等个人数据时调用。',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'save_user_profile',
       description:
         '保存或更新用户的持仓和个人信息档案。当用户提供持仓信息、风险偏好、个人背景时调用。新数据会与已有数据合并，holdings 按基金代码去重。',
       parameters: {
@@ -148,3 +141,25 @@ export const tools: OpenAI.Chat.ChatCompletionTool[] = [
     },
   },
 ];
+
+const webSearchTool: OpenAI.Chat.ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'web_search',
+    description: '搜索互联网获取实时信息，适用于查询基金新闻、市场动态、政策资讯等最新内容',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '搜索关键词' },
+        max_results: { type: 'number', description: '返回结果数量，默认 5' },
+      },
+      required: ['query'],
+    },
+  },
+};
+
+if(config.search.baseURL) {
+  baseTools.push(webSearchTool)
+}
+
+export const tools: OpenAI.Chat.ChatCompletionTool[] = baseTools

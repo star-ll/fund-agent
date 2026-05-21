@@ -27,5 +27,9 @@ export const config = {
     appId: process.env.DISCORD_APP_ID ?? '',
     botToken: process.env.DISCORD_BOT_TOKEN ?? '',
   },
+  search: {
+    baseURL: process.env.SEARCH_BASE_URL ?? 'http://localhost:3001',
+    apiKey: process.env.SEARCH_API_KEY ?? '',
+  },
   port: parseInt(process.env.PORT ?? '3000'),
 };
