@@ -58,6 +58,7 @@ export async function runAgent(
 
   const tag = userId ? `agent:${userId}` : 'agent:cli';
   logger.info(tag, '收到问题', userMessage);
+  logger.info(tag, 'system prompt 前200字', effectiveSystemPrompt.slice(0, 200));
 
   const messages: Message[] = [
     { role: 'system', content: effectiveSystemPrompt },
