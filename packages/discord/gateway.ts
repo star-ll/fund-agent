@@ -119,7 +119,6 @@ function convertTables(text: string): string {
           result.push('```');
           header.forEach((h, idx) => result.push(`${h}：${row[idx] ?? ''}`));
           result.push('```');
-          result.push('');
         }
       }
     } else {
