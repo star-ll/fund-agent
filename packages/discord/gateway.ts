@@ -72,7 +72,7 @@ export function startGateway(): void {
       await setHistory(userId, newHistory);
 
       // Discord 消息上限 2000 字
-      const content = answer.length > 2000 ? answer.slice(0, 1997) + '...' : answer;
+      const content = convertTables(answer.length > 2000 ? answer.slice(0, 1997) + '...' : answer);
       await reply.edit(content);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -84,4 +84,49 @@ export function startGateway(): void {
   client.login(config.discord.botToken).catch((err) => {
     logger.error('gateway', 'Gateway 登录失败', err instanceof Error ? err.message : String(err));
   });
+}
+
+// 把 LLM 输出的 markdown 表格转成卡片流格式
+function convertTables(text: string): string {
+  const lines = text.split('\n');
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    if (/\|/.test(lines[i])) {
+      const tableLines: string[] = [];
+      while (i < lines.length && /\|/.test(lines[i])) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+
+      // 过滤分隔行（|---|---| 这种）
+      const rows = tableLines
+        .filter(l => !/^\s*\|?[\s\-:|]+\|/.test(l))
+        .map(l => l.split('|').map(c => c.trim()).filter(c => c.length > 0))
+        .filter(r => r.length > 0);
+
+      if (rows.length === 0) continue;
+
+      const [header, ...dataRows] = rows;
+
+      if (dataRows.length === 0) {
+        // 只有一行，直接拼成一行文字
+        result.push(header.join('  '));
+      } else {
+        // 多行数据：每行渲染成一个代码块卡片
+        for (const row of dataRows) {
+          result.push('```');
+          header.forEach((h, idx) => result.push(`${h}：${row[idx] ?? ''}`));
+          result.push('```');
+          result.push('');
+        }
+      }
+    } else {
+      result.push(lines[i]);
+      i++;
+    }
+  }
+
+  return result.join('\n');
 }
