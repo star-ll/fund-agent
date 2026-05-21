@@ -114,12 +114,13 @@ function convertTables(text: string): string {
         // 只有一行，直接拼成一行文字
         result.push(header.join('  '));
       } else {
-        // 多行数据：每行渲染成一个代码块卡片
-        for (const row of dataRows) {
-          result.push('```');
-          header.forEach((h, idx) => result.push(`${h}：${row[idx] ?? ''}`));
-          result.push('```');
-        }
+        // 多行数据：合并成一个代码块，行之间用分隔符
+        result.push('```');
+        dataRows.forEach((row, idx) => {
+          header.forEach((h, col) => result.push(`${h}：${row[col] ?? ''}`));
+          if (idx < dataRows.length - 1) result.push('────────────────');
+        });
+        result.push('```');
       }
     } else {
       result.push(lines[i]);
