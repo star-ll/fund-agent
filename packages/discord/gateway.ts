@@ -71,9 +71,13 @@ export function startGateway(): void {
       ];
       await setHistory(userId, newHistory);
 
-      // Discord 消息上限 2000 字
-      const content = convertTables(answer.length > 2000 ? answer.slice(0, 1997) + '...' : answer);
-      await reply.edit(content);
+      const chunks = splitMessage(convertTables(answer));
+      await reply.edit(chunks[0]);
+      if ('send' in message.channel) {
+        for (let i = 1; i < chunks.length; i++) {
+          await message.channel.send(chunks[i]);
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error('gateway', `处理异常 userId=${userId}`, err instanceof Error ? err.stack : msg);
@@ -84,6 +88,22 @@ export function startGateway(): void {
   client.login(config.discord.botToken).catch((err) => {
     logger.error('gateway', 'Gateway 登录失败', err instanceof Error ? err.message : String(err));
   });
+}
+
+function splitMessage(text: string, limit = 2000): string[] {
+  const chunks: string[] = [];
+  while (text.length > 0) {
+    if (text.length <= limit) {
+      chunks.push(text);
+      break;
+    }
+    // 在 limit 内找最后一个换行符，避免在句子中间截断
+    let pos = text.lastIndexOf('\n', limit);
+    if (pos <= 0) pos = limit;
+    chunks.push(text.slice(0, pos));
+    text = text.slice(pos).trimStart();
+  }
+  return chunks;
 }
 
 // 把 LLM 输出的 markdown 表格转成卡片流格式

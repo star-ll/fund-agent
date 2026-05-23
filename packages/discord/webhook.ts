@@ -3,9 +3,11 @@ import express from 'express';
 import { runAgent } from '../../src/agents/executor';
 import { loadProfileFromDB } from '../../src/services/user';
 import { buildSystemPrompt, startupSummaryPrompt } from '../../src/prompts';
+import { NEW_COMMAND_REPLY } from '../../src/commands/new';
+import { buildMyHoldingsReply } from '../../src/commands/my';
 import { verifyDiscordSignature } from './verify';
 import { sendFollowup } from './api';
-import { getHistory, setHistory } from './history';
+import { getHistory, setHistory, clearHistory } from './history';
 import { redis } from '../../src/services/redis';
 import { config } from '../../src/utils/config';
 import { logger } from '../../src/utils/logger';
@@ -52,9 +54,35 @@ app.post('/interactions', async (req, res) => {
   // APPLICATION_COMMAND — slash command
   if (body.type === 2) {
     const userId = body.member?.user?.id ?? body.user?.id ?? 'unknown';
-    const question: string = body.data?.options?.find((o: any) => o.name === 'question')?.value ?? '';
+    const commandName: string = body.data?.name ?? '';
 
-    logger.info('webhook', `收到指令 /ask`, { userId, question });
+    logger.info('webhook', `收到指令 /${commandName}`, { userId });
+
+    // /new — 清除对话历史
+    if (commandName === 'new') {
+      await clearHistory(userId);
+      res.json({ type: 4, data: { content: NEW_COMMAND_REPLY } });
+      return;
+    }
+
+    // /my — 查看持仓
+    if (commandName === 'my') {
+      res.json({ type: 5 });
+      setImmediate(async () => {
+        try {
+          const reply = await buildMyHoldingsReply(userId);
+          await sendFollowup(body.token, reply);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error('webhook', `处理 /my 异常 userId=${userId}`, msg);
+          await sendFollowup(body.token, `获取持仓失败：${msg}`).catch(() => {});
+        }
+      });
+      return;
+    }
+
+    // /ask
+    const question: string = body.data?.options?.find((o: any) => o.name === 'question')?.value ?? '';
 
     if (!question) {
       logger.warn('webhook', `用户 ${userId} 未填写问题`);

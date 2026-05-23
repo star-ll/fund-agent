@@ -15,3 +15,7 @@ export async function setHistory(userId: string, history: Message[]): Promise<vo
   const trimmed = history.slice(-20);
   await redis.setex(HISTORY_KEY(userId), HISTORY_TTL, JSON.stringify(trimmed));
 }
+
+export async function clearHistory(userId: string): Promise<void> {
+  await redis.del(HISTORY_KEY(userId));
+}

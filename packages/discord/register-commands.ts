@@ -16,6 +16,14 @@ const commands = [
       },
     ],
   },
+  {
+    name: 'new',
+    description: '开启新对话，清除之前的记忆',
+  },
+  {
+    name: 'my',
+    description: '查看我的持仓信息',
+  },
 ];
 
 async function registerCommands() {
