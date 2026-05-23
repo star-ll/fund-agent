@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "ts-node packages/cli/index.ts",
     "webhook": "ts-node packages/discord/webhook-entry.ts",
-    "register": "ts-node packages/discord/register-commands.ts",
     "build": "tsc && cp src/prompts/*.md dist/src/prompts/ && mkdir -p dist/packages/discord/prompts dist/packages/cli/prompts && cp packages/discord/prompts/*.md dist/packages/discord/prompts/ && cp packages/cli/prompts/*.md dist/packages/cli/prompts/",
     "start": "node dist/packages/discord/webhook-entry.js",
     "server": "cd server && uv run uvicorn main:app --host 0.0.0.0 --port 8080",
-    "server:dev": "cd server && uv run uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
+    "server:dev": "cd server && uv run uvicorn main:app --host 0.0.0.0 --port 8080 --reload",
+    "discord:register": "ts-node packages/discord/register-commands.ts"
   },
   "keywords": [],
   "author": "",
