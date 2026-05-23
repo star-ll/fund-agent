@@ -123,34 +123,43 @@ export async function runAgent(
 
     // 工具调用
     logger.info(tag, `本轮工具调用数: ${choice.message.tool_calls.length}`);
-    const toolResults: { tool_call_id: string; data: unknown }[] = [];
-    for (const tc of choice.message.tool_calls) {
+
+    // 顺序预处理：限流检查、日志、进度回调（保证 webSearchCount 计数准确）
+    const prepared = choice.message.tool_calls.map((tc) => {
       const args = JSON.parse(tc.function.arguments);
       logger.info(tag, `工具调用: ${tc.function.name}`, args);
       progressCb?.(getToolLabel(tc.function.name, args));
 
-      let dispatched: Awaited<ReturnType<typeof dispatchTool>>;
-      try {
-        if (tc.function.name === 'web_search') {
-          webSearchCount++;
-          if (webSearchCount > WEB_SEARCH_LIMIT) {
-            logger.warn(tag, `web_search 已达上限 ${WEB_SEARCH_LIMIT} 次，跳过`);
-            messages.push({ role: 'tool', tool_call_id: tc.id, content: '已达搜索上限，请基于已有信息作答，不要再调用 web_search。' });
-            continue;
-          }
+      let skipContent: string | null = null;
+      if (tc.function.name === 'web_search') {
+        webSearchCount++;
+        if (webSearchCount > WEB_SEARCH_LIMIT) {
+          logger.warn(tag, `web_search 已达上限 ${WEB_SEARCH_LIMIT} 次，跳过`);
+          skipContent = '已达搜索上限，请基于已有信息作答，不要再调用 web_search。';
         }
-        dispatched = await dispatchTool(tc.function.name, args, userId);
-        logger.debug(tag, `工具返回: ${tc.function.name}`, JSON.stringify(dispatched.data).slice(200));
-      } catch (err) {
-        logger.error(tag, `工具异常: ${tc.function.name}`, err instanceof Error ? err.message : String(err));
-        throw err;
       }
+      return { tc, args, skipContent };
+    });
 
-      callLog.push(`> ${dispatched.callMessage}`);
-      toolResults.push({ tool_call_id: tc.id, data: dispatched.data });
-    }
+    // 并行派发所有工具
+    const toolResults = await Promise.all(
+      prepared.map(async ({ tc, args, skipContent }) => {
+        if (skipContent) {
+          return { tool_call_id: tc.id, callMessage: null as string | null, data: skipContent };
+        }
+        try {
+          const dispatched = await dispatchTool(tc.function.name, args, userId);
+          logger.debug(tag, `工具返回: ${tc.function.name}`, JSON.stringify(dispatched.data).slice(0, 200));
+          return { tool_call_id: tc.id, callMessage: dispatched.callMessage, data: dispatched.data };
+        } catch (err) {
+          logger.error(tag, `工具异常: ${tc.function.name}`, err instanceof Error ? err.message : String(err));
+          throw err;
+        }
+      }),
+    );
 
-    for (const { tool_call_id, data } of toolResults) {
+    for (const { tool_call_id, callMessage, data } of toolResults) {
+      if (callMessage) callLog.push(`> ${callMessage}`);
       messages.push({ role: 'tool', tool_call_id, content: JSON.stringify(data) });
     }
   }

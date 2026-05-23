@@ -104,6 +104,8 @@ app.post('/interactions', async (req, res) => {
         ]);
         logger.info('webhook', `历史消息数: ${history.length}，档案: ${profile ? '有' : '无'}`);
 
+        const userRounds = history.filter((m) => m.role === 'user').length;
+
         const effectiveHistory = history.length === 0 && profile
           ? [{ role: 'assistant' as const, content: startupSummaryPrompt(JSON.stringify(profile)) }]
           : history;
@@ -127,8 +129,10 @@ app.post('/interactions', async (req, res) => {
         ];
         await setHistory(userId, newHistory);
 
+        const hint = userRounds >= 10 ? '\n\n> 对话已较长，建议使用 `/new` 开启新对话以获得更准确的回答。' : '';
+        const full = reply + hint;
         // Discord 消息上限 2000 字，超出则截断
-        const content = reply.length > 2000 ? reply.slice(0, 1997) + '...' : reply;
+        const content = full.length > 2000 ? full.slice(0, 1997) + '...' : full;
         logger.info('webhook', `发送回复 userId=${userId}，长度=${content.length}`);
         await sendFollowup(body.token, content);
       } catch (err) {
