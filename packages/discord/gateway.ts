@@ -55,14 +55,17 @@ export function startGateway(): void {
         ? [{ role: 'assistant' as const, content: startupSummaryPrompt(JSON.stringify(profile)) }]
         : history;
 
+      const progressPromises: Promise<unknown>[] = [];
       const answer = await runAgent(question, {
         history: effectiveHistory,
         userId,
         systemPrompt,
         onProgress: (label) => {
-          reply.edit(`⏳ ${label}`).catch(() => {});
+          progressPromises.push(reply.edit(`⏳ ${label}`).catch(() => {}));
         },
       });
+
+      await Promise.allSettled(progressPromises);
 
       const newHistory = [
         ...effectiveHistory,

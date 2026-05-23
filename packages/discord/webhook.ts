@@ -108,14 +108,17 @@ app.post('/interactions', async (req, res) => {
           ? [{ role: 'assistant' as const, content: startupSummaryPrompt(JSON.stringify(profile)) }]
           : history;
 
+        const progressPromises: Promise<unknown>[] = [];
         const reply = await runAgent(question, {
           history: effectiveHistory,
           userId,
           systemPrompt,
           onProgress: (label) => {
-            sendFollowup(body.token, `⏳ ${label}`).catch(() => {});
+            progressPromises.push(sendFollowup(body.token, `⏳ ${label}`).catch(() => {}));
           },
         });
+
+        await Promise.allSettled(progressPromises);
 
         const newHistory = [
           ...effectiveHistory,
