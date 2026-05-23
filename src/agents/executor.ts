@@ -59,9 +59,10 @@ export async function runAgent(
 
   const callLog: string[] = [];
   let webSearchCount = 0;
-  const WEB_SEARCH_LIMIT = 3;
+  const WEB_SEARCH_LIMIT = 5;
+  const LOOP_LIMIT = 15;
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < LOOP_LIMIT; i++) {
     logger.info(tag, `第 ${i + 1} 轮思考`);
     progressCb?.('思考中…');
 
