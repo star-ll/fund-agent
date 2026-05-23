@@ -10,6 +10,13 @@ const client = new OpenAI({ baseURL: config.llm.baseURL, apiKey: config.llm.apiK
 
 type Message = OpenAI.Chat.ChatCompletionMessageParam;
 
+function buildSystemPrompt(systemPrompt?: string): string {
+  const base = systemPrompt ? systemPrompt : coreSystemPrompt
+
+  const today = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  return `今天是 ${today}。\n\n${base}`;
+}
+
 
 
 export interface RunAgentOptions {
@@ -29,7 +36,7 @@ export async function runAgent(
   let history: Message[];
   let userId: string | undefined;
   let progressCb: ((label: string) => void) | undefined;
-  let effectiveSystemPrompt = coreSystemPrompt;
+  let historySystemPrompt:string|undefined
 
   if (Array.isArray(historyOrOptions)) {
     history = historyOrOptions;
@@ -38,19 +45,21 @@ export async function runAgent(
     history = historyOrOptions.history ?? [];
     userId = historyOrOptions.userId;
     progressCb = historyOrOptions.onProgress;
-    effectiveSystemPrompt = historyOrOptions.systemPrompt ?? coreSystemPrompt;
+    historySystemPrompt = historyOrOptions.systemPrompt;
   }
 
   const tag = userId ? `agent:${userId}` : 'agent:cli';
   logger.info(tag, '收到问题', userMessage);
 
   const messages: Message[] = [
-    { role: 'system', content: effectiveSystemPrompt },
+    { role: 'system', content: buildSystemPrompt(historySystemPrompt) },
     ...history,
     { role: 'user', content: userMessage },
   ];
 
   const callLog: string[] = [];
+  let webSearchCount = 0;
+  const WEB_SEARCH_LIMIT = 3;
 
   for (let i = 0; i < 10; i++) {
     logger.info(tag, `第 ${i + 1} 轮思考`);
@@ -89,6 +98,14 @@ export async function runAgent(
 
       let dispatched: Awaited<ReturnType<typeof dispatchTool>>;
       try {
+        if (tc.function.name === 'web_search') {
+          webSearchCount++;
+          if (webSearchCount > WEB_SEARCH_LIMIT) {
+            logger.warn(tag, `web_search 已达上限 ${WEB_SEARCH_LIMIT} 次，跳过`);
+            messages.push({ role: 'tool', tool_call_id: tc.id, content: '已达搜索上限，请基于已有信息作答，不要再调用 web_search。' });
+            continue;
+          }
+        }
         dispatched = await dispatchTool(tc.function.name, args, userId);
         logger.debug(tag, `工具返回: ${tc.function.name}`, JSON.stringify(dispatched.data).slice(200));
       } catch (err) {
