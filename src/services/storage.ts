@@ -17,6 +17,10 @@ export interface UserProfile {
   investment_years?: number;
   target_return?: string;
   max_loss_tolerance?: string;
+  investment_goal?: string;
+  preferred_fund_types?: string[];
+  monthly_investment?: string;
+  portfolio_scale?: string;
   notes?: string;
   updated_at: string;
 }

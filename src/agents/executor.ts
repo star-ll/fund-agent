@@ -5,16 +5,48 @@ import { coreSystemPrompt } from '../prompts';
 
 import { logger } from '../utils/logger';
 import { dispatchTool, getToolLabel } from './tools';
+import { loadProfile } from '../services/storage';
+import { loadProfileFromDB } from '../services/user';
+import type { UserProfile } from '../services/storage';
 
 const client = new OpenAI({ baseURL: config.llm.baseURL, apiKey: config.llm.apiKey });
 
 type Message = OpenAI.Chat.ChatCompletionMessageParam;
 
-function buildSystemPrompt(systemPrompt?: string): string {
-  const base = systemPrompt ? systemPrompt : coreSystemPrompt
+function formatProfileForPrompt(profile: UserProfile): string {
+  const lines: string[] = ['## 当前用户档案'];
 
+  const riskMap = { low: '保守', medium: '稳健', high: '积极' };
+  if (profile.risk_level) lines.push(`- 风险偏好：${riskMap[profile.risk_level]}`);
+  if (profile.investment_years) lines.push(`- 投资年限：${profile.investment_years} 年`);
+  if (profile.target_return) lines.push(`- 目标收益：${profile.target_return}`);
+  if (profile.max_loss_tolerance) lines.push(`- 可承受最大亏损：${profile.max_loss_tolerance}`);
+  if (profile.investment_goal) lines.push(`- 投资目标：${profile.investment_goal}`);
+  if (profile.preferred_fund_types?.length) lines.push(`- 偏好基金类型：${profile.preferred_fund_types.join('、')}`);
+  if (profile.monthly_investment) lines.push(`- 月均投入：${profile.monthly_investment}`);
+  if (profile.portfolio_scale) lines.push(`- 总资产量级：${profile.portfolio_scale}`);
+  if (profile.notes) lines.push(`- 备注：${profile.notes}`);
+
+  if (profile.holdings.length > 0) {
+    lines.push(`- 持仓基金（${profile.holdings.length} 只）：${profile.holdings.map((h) => h.fund_code).join('、')}`);
+  }
+
+  return lines.join('\n');
+}
+
+async function buildSystemPrompt(systemPrompt?: string, userId?: string): Promise<string> {
+  const base = systemPrompt ? systemPrompt : coreSystemPrompt;
   const today = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
-  return `今天是 ${today}。\n\n${base}`;
+
+  let profileSection = '';
+  try {
+    const profile = userId ? await loadProfileFromDB(userId) : loadProfile();
+    if (profile) profileSection = `\n\n${formatProfileForPrompt(profile)}`;
+  } catch {
+    // 档案加载失败不影响主流程
+  }
+
+  return `今天是 ${today}。\n\n${base}${profileSection}`;
 }
 
 
@@ -52,7 +84,7 @@ export async function runAgent(
   logger.info(tag, '收到问题', userMessage);
 
   const messages: Message[] = [
-    { role: 'system', content: buildSystemPrompt(historySystemPrompt) },
+    { role: 'system', content: await buildSystemPrompt(historySystemPrompt, userId) },
     ...history,
     { role: 'user', content: userMessage },
   ];

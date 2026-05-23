@@ -41,6 +41,12 @@ export async function loadProfileFromDB(weworkUserId: string): Promise<UserProfi
     investment_years: user.investment_years,
     target_return: user.target_return,
     max_loss_tolerance: user.max_loss_tolerance,
+    investment_goal: user.investment_goal,
+    preferred_fund_types: user.preferred_fund_types
+      ? (typeof user.preferred_fund_types === 'string' ? JSON.parse(user.preferred_fund_types) : user.preferred_fund_types)
+      : undefined,
+    monthly_investment: user.monthly_investment,
+    portfolio_scale: user.portfolio_scale,
     notes: user.notes,
     updated_at: user.updated_at?.toISOString() ?? new Date().toISOString(),
   };
@@ -59,6 +65,10 @@ export async function saveProfileToDB(
   if (patch.investment_years !== undefined) { fields.push('investment_years = ?'); values.push(patch.investment_years); }
   if (patch.target_return !== undefined) { fields.push('target_return = ?'); values.push(patch.target_return); }
   if (patch.max_loss_tolerance !== undefined) { fields.push('max_loss_tolerance = ?'); values.push(patch.max_loss_tolerance); }
+  if (patch.investment_goal !== undefined) { fields.push('investment_goal = ?'); values.push(patch.investment_goal); }
+  if (patch.preferred_fund_types !== undefined) { fields.push('preferred_fund_types = ?'); values.push(JSON.stringify(patch.preferred_fund_types)); }
+  if (patch.monthly_investment !== undefined) { fields.push('monthly_investment = ?'); values.push(patch.monthly_investment); }
+  if (patch.portfolio_scale !== undefined) { fields.push('portfolio_scale = ?'); values.push(patch.portfolio_scale); }
   if (patch.notes !== undefined) { fields.push('notes = ?'); values.push(patch.notes); }
 
   if (fields.length > 0) {

@@ -8,12 +8,23 @@ CREATE TABLE IF NOT EXISTS users (
   investment_years INT             DEFAULT NULL,
   target_return    VARCHAR(64)     DEFAULT NULL,
   max_loss_tolerance VARCHAR(64)   DEFAULT NULL,
+  investment_goal  VARCHAR(128)    DEFAULT NULL,
+  preferred_fund_types JSON        DEFAULT NULL,
+  monthly_investment   VARCHAR(64) DEFAULT NULL,
+  portfolio_scale      VARCHAR(64) DEFAULT NULL,
   notes            TEXT            DEFAULT NULL,
   updated_at       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   created_at       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_wework_user_id (wework_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Migration: run this on existing databases
+-- ALTER TABLE users
+--   ADD COLUMN investment_goal       VARCHAR(128) DEFAULT NULL AFTER max_loss_tolerance,
+--   ADD COLUMN preferred_fund_types  JSON         DEFAULT NULL AFTER investment_goal,
+--   ADD COLUMN monthly_investment    VARCHAR(64)  DEFAULT NULL AFTER preferred_fund_types,
+--   ADD COLUMN portfolio_scale       VARCHAR(64)  DEFAULT NULL AFTER monthly_investment;
 
 CREATE TABLE IF NOT EXISTS holdings (
   id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
