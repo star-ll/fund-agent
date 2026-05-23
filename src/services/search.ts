@@ -14,10 +14,14 @@ export interface SearchResponse {
 }
 
 export async function webSearch(query: string, maxResults = 5): Promise<SearchResponse> {
+  const headers: Record<string, string> = {};
+  if (config.search.apiKey) {
+    headers['Authorization'] = `Bearer ${config.search.apiKey}`;
+  }
   const response = await axios.post(
     `${config.search.baseURL}/search`,
     { query, max_results: maxResults },
-    { headers: { Authorization: `Bearer ${config.search.apiKey}` } },
+    { headers },
   );
   return response.data;
 }

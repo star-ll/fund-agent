@@ -101,7 +101,7 @@ export async function runAgent(
       let result: unknown;
       try {
         result = await dispatchTool(tc.function.name, args, userId);
-        logger.debug(tag, `工具返回: ${tc.function.name}`, result);
+        logger.debug(tag, `工具返回: ${tc.function.name}`, JSON.stringify(result).slice(200));
       } catch (err) {
         logger.error(tag, `工具异常: ${tc.function.name}`, err instanceof Error ? err.message : String(err));
         throw err;
