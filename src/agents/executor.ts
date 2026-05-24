@@ -187,8 +187,9 @@ export async function runAgent(
           logger.debug(tag, `工具返回: ${tc.function.name}`, JSON.stringify(dispatched.data).slice(0, 200));
           return { tool_call_id: tc.id, callMessage: dispatched.callMessage, data: dispatched.data };
         } catch (err) {
-          logger.error(tag, `工具异常: ${tc.function.name}`, err instanceof Error ? err.message : String(err));
-          throw err;
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error(tag, `工具异常: ${tc.function.name}`, msg);
+          return { tool_call_id: tc.id, callMessage: null as string | null, data: { error: `工具 ${tc.function.name} 调用失败：${msg}，请基于已有信息作答。` } };
         }
       }),
     );

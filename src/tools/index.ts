@@ -111,7 +111,7 @@ const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
-      name: 'get_user_profile',
+      name: 'save_user_profile',
       description:
         '保存或更新用户的持仓和个人信息档案。当用户提供持仓信息、风险偏好、个人背景时调用。新数据会与已有数据合并，holdings 按基金代码去重。',
       parameters: {
