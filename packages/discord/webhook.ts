@@ -1,18 +1,15 @@
 import * as path from 'path';
 import express from 'express';
 import { runAgent } from '../../src/agents/executor';
-import { loadProfileFromDB } from '../../src/services/user';
+import { loadProfileFromDB, loadSummaryFromDB } from '../../src/services/user';
 import { buildSystemPrompt, startupSummaryPrompt } from '../../src/prompts';
-import { NEW_COMMAND_REPLY } from '../../src/commands/new';
-import { buildMyHoldingsReply } from '../../src/commands/my';
 import { verifyDiscordSignature } from './verify';
 import { sendFollowup } from './api';
 import { getHistory, setHistory, clearHistory } from './history';
+import { buildSummaryMessages } from '../../src/history/summary-history';
 import { redis } from '../../src/services/redis';
 import { config } from '../../src/utils/config';
 import { logger } from '../../src/utils/logger';
-import { compressAllHistory, summaryHistory, buildSummaryMessages } from '../../src/history/summary-history';
-import { saveSummaryToDB, loadSummaryFromDB } from '../../src/services/user';
 
 const app = express();
 const systemPrompt = buildSystemPrompt(path.join(__dirname, 'prompts/output-format.md'));
@@ -66,17 +63,17 @@ app.post('/interactions', async (req, res) => {
       setImmediate(async () => {
         try {
           const history = await getHistory(userId);
-          if (history.length > 0) {
-            const summary = await compressAllHistory(history);
-            if (summary) await saveSummaryToDB(userId, summary);
-          }
-          await clearHistory(userId);
-          await sendFollowup(body.token, NEW_COMMAND_REPLY);
+          const reply = await runAgent('/new', {
+            history,
+            userId,
+            onClearHistory: () => clearHistory(userId),
+          });
+          await sendFollowup(body.token, reply);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           logger.error('webhook', `处理 /new 异常 userId=${userId}`, msg);
           await clearHistory(userId);
-          await sendFollowup(body.token, NEW_COMMAND_REPLY).catch(() => {});
+          await sendFollowup(body.token, '✅ 已开启新对话。').catch(() => {});
         }
       });
       return;
@@ -87,7 +84,7 @@ app.post('/interactions', async (req, res) => {
       res.json({ type: 5 });
       setImmediate(async () => {
         try {
-          const reply = await buildMyHoldingsReply(userId);
+          const reply = await runAgent('/my', { userId });
           await sendFollowup(body.token, reply);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -134,6 +131,7 @@ app.post('/interactions', async (req, res) => {
           }
         }
 
+        let historyCleared = false;
         const progressPromises: Promise<unknown>[] = [];
         const reply = await runAgent(question, {
           history: effectiveHistory,
@@ -142,16 +140,22 @@ app.post('/interactions', async (req, res) => {
           onProgress: (label) => {
             progressPromises.push(sendFollowup(body.token, `⏳ ${label}`).catch(() => {}));
           },
+          onClearHistory: async () => {
+            await clearHistory(userId);
+            historyCleared = true;
+          },
         });
 
         await Promise.allSettled(progressPromises);
 
-        const newHistory = [
-          ...effectiveHistory,
-          { role: 'user' as const, content: question },
-          { role: 'assistant' as const, content: reply },
-        ];
-        await setHistory(userId, newHistory);
+        if (!historyCleared) {
+          const newHistory = [
+            ...effectiveHistory,
+            { role: 'user' as const, content: question },
+            { role: 'assistant' as const, content: reply },
+          ];
+          await setHistory(userId, newHistory);
+        }
 
         const hint = userRounds >= 10 ? '\n\n> 对话已较长，建议使用 `/new` 开启新对话以获得更准确的回答。' : '';
         const full = reply + hint;

@@ -1,12 +1,13 @@
 import OpenAI from 'openai';
 import { config } from '../utils/config';
 import { loadProfileFromDB } from '../services/user';
+import { loadProfile } from '../services/storage';
 import { myHoldingsPrompt } from '../prompts';
 
 const client = new OpenAI({ baseURL: config.llm.baseURL, apiKey: config.llm.apiKey });
 
-export async function buildMyHoldingsReply(userId: string): Promise<string> {
-  const profile = await loadProfileFromDB(userId);
+export async function buildMyHoldingsReply(userId?: string): Promise<string> {
+  const profile = userId ? await loadProfileFromDB(userId) : loadProfile();
 
   if (!profile || (profile.holdings.length === 0 && !profile.risk_level)) {
     return '暂无持仓数据，请先通过截图或文字告知我你的持仓情况。';

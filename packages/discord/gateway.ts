@@ -1,9 +1,10 @@
 import * as path from 'path';
 import { Client, GatewayIntentBits, Events, Message } from 'discord.js';
 import { runAgent } from '../../src/agents/executor';
-import { loadProfileFromDB } from '../../src/services/user';
+import { loadProfileFromDB, loadSummaryFromDB } from '../../src/services/user';
 import { buildSystemPrompt, startupSummaryPrompt } from '../../src/prompts';
-import { getHistory, setHistory } from './history';
+import { buildSummaryMessages } from '../../src/history/summary-history';
+import { getHistory, setHistory, clearHistory } from './history';
 import { config } from '../../src/utils/config';
 import { logger } from '../../src/utils/logger';
 
@@ -51,10 +52,17 @@ export function startGateway(): void {
         loadProfileFromDB(userId),
       ]);
 
-      const effectiveHistory = history.length === 0 && profile
-        ? [{ role: 'assistant' as const, content: startupSummaryPrompt(JSON.stringify(profile)) }]
-        : history;
+      let effectiveHistory = history;
+      if (history.length === 0) {
+        const dbSummary = await loadSummaryFromDB(userId);
+        if (dbSummary) {
+          effectiveHistory = buildSummaryMessages(dbSummary);
+        } else if (profile) {
+          effectiveHistory = [{ role: 'assistant' as const, content: startupSummaryPrompt(JSON.stringify(profile)) }];
+        }
+      }
 
+      let historyCleared = false;
       const progressPromises: Promise<unknown>[] = [];
       const answer = await runAgent(question, {
         history: effectiveHistory,
@@ -63,16 +71,22 @@ export function startGateway(): void {
         onProgress: (label) => {
           progressPromises.push(reply.edit(`⏳ ${label}`).catch(() => {}));
         },
+        onClearHistory: async () => {
+          await clearHistory(userId);
+          historyCleared = true;
+        },
       });
 
       await Promise.allSettled(progressPromises);
 
-      const newHistory = [
-        ...effectiveHistory,
-        { role: 'user' as const, content: question },
-        { role: 'assistant' as const, content: answer },
-      ];
-      await setHistory(userId, newHistory);
+      if (!historyCleared) {
+        const newHistory = [
+          ...effectiveHistory,
+          { role: 'user' as const, content: question },
+          { role: 'assistant' as const, content: answer },
+        ];
+        await setHistory(userId, newHistory);
+      }
 
       const chunks = splitMessage(convertTables(answer));
       await reply.edit(chunks[0]);

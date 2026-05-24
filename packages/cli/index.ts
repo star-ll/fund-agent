@@ -95,12 +95,23 @@ function collectLines(accumulated: string) {
 async function submit(text: string) {
   const spinner = startSpinner('思考中…\n');
   try {
-    const reply = await runAgent(text, { history, systemPrompt, onProgress: (label) => spinner.update(label) });
+    let historyCleared = false;
+    const reply = await runAgent(text, {
+      history,
+      systemPrompt,
+      onProgress: (label) => spinner.update(label),
+      onClearHistory: async () => {
+        history.splice(0);
+        historyCleared = true;
+      },
+    });
     spinner.stop();
     console.log(`\n${paint(c.cyan + c.bold, '助理')} ${paint(c.gray, '›')}\n`);
     console.log(renderAnsi(reply));
-    history.push({ role: 'user', content: text });
-    history.push({ role: 'assistant', content: reply });
+    if (!historyCleared) {
+      history.push({ role: 'user', content: text });
+      history.push({ role: 'assistant', content: reply });
+    }
   } catch (err: unknown) {
     spinner.stop();
     if (err && typeof err === 'object' && 'response' in err) {

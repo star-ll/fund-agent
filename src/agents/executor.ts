@@ -6,7 +6,11 @@ import { coreSystemPrompt } from '../prompts';
 import { logger } from '../utils/logger';
 import { dispatchTool, getToolLabel } from './tools';
 import { loadProfile } from '../services/storage';
-import { loadProfileFromDB } from '../services/user';
+import { loadProfileFromDB, saveSummaryToDB } from '../services/user';
+import { compressAllHistory } from '../history/summary-history';
+import { buildMyHoldingsReply } from '../commands/my';
+import { NEW_COMMAND_REPLY } from '../commands/new';
+import { HELP_TEXT } from '../commands/help';
 import type { UserProfile } from '../services/storage';
 
 const client = new OpenAI({ baseURL: config.llm.baseURL, apiKey: config.llm.apiKey });
@@ -57,27 +61,58 @@ export interface RunAgentOptions {
   systemPrompt?: string;
   // webhook 模式传入 userId，使用 MySQL；CLI 模式不传，使用本地文件
   userId?: string;
+  // /new 命令执行后由调用方清除自身存储（Redis key、内存数组等）
+  onClearHistory?: () => Promise<void>;
+}
+
+async function handleBuiltinCommand(
+  input: string,
+  history: Message[],
+  userId?: string,
+  onClearHistory?: () => Promise<void>,
+): Promise<string> {
+  const cmd = input.split(/\s+/)[0].toLowerCase();
+  const tag = userId ? `cmd:${userId}` : 'cmd:cli';
+  logger.info(tag, `执行内置指令 ${cmd}`);
+
+  switch (cmd) {
+    case '/new': {
+      if (history.length > 0) {
+        try {
+          const summary = await compressAllHistory(history);
+          if (summary && userId) await saveSummaryToDB(userId, summary);
+        } catch (err) {
+          logger.error(tag, '/new 压缩历史失败', err instanceof Error ? err.message : String(err));
+        }
+      }
+      await onClearHistory?.();
+      return NEW_COMMAND_REPLY;
+    }
+    case '/my':
+      return buildMyHoldingsReply(userId);
+    case '/help':
+      return HELP_TEXT;
+    default:
+      return `未知指令 ${cmd}，输入 /help 查看可用指令。`;
+  }
 }
 
 export async function runAgent(
   userMessage: string,
-  historyOrOptions: Message[] | RunAgentOptions = [],
-  onProgress?: (label: string) => void,
+  options: RunAgentOptions = {},
 ): Promise<string> {
-  // 兼容旧调用方式 runAgent(msg, history, onProgress)
-  let history: Message[];
-  let userId: string | undefined;
-  let progressCb: ((label: string) => void) | undefined;
-  let historySystemPrompt:string|undefined
+  const {
+    history = [],
+    userId,
+    onProgress: progressCb,
+    systemPrompt: historySystemPrompt,
+    onClearHistory,
+  } = options;
 
-  if (Array.isArray(historyOrOptions)) {
-    history = historyOrOptions;
-    progressCb = onProgress;
-  } else {
-    history = historyOrOptions.history ?? [];
-    userId = historyOrOptions.userId;
-    progressCb = historyOrOptions.onProgress;
-    historySystemPrompt = historyOrOptions.systemPrompt;
+  // 内置指令路由
+  const trimmed = userMessage.trim();
+  if (trimmed.startsWith('/')) {
+    return handleBuiltinCommand(trimmed, history, userId, onClearHistory);
   }
 
   const tag = userId ? `agent:${userId}` : 'agent:cli';
