@@ -11,6 +11,8 @@ import { getHistory, setHistory, clearHistory } from './history';
 import { redis } from '../../src/services/redis';
 import { config } from '../../src/utils/config';
 import { logger } from '../../src/utils/logger';
+import { compressAllHistory, summaryHistory, buildSummaryMessages } from '../../src/history/summary-history';
+import { saveSummaryToDB, loadSummaryFromDB } from '../../src/services/user';
 
 const app = express();
 const systemPrompt = buildSystemPrompt(path.join(__dirname, 'prompts/output-format.md'));
@@ -58,10 +60,25 @@ app.post('/interactions', async (req, res) => {
 
     logger.info('webhook', `收到指令 /${commandName}`, { userId });
 
-    // /new — 清除对话历史
+    // /new — 压缩历史存 DB，清除 Redis
     if (commandName === 'new') {
-      await clearHistory(userId);
-      res.json({ type: 4, data: { content: NEW_COMMAND_REPLY } });
+      res.json({ type: 5 });
+      setImmediate(async () => {
+        try {
+          const history = await getHistory(userId);
+          if (history.length > 0) {
+            const summary = await compressAllHistory(history);
+            if (summary) await saveSummaryToDB(userId, summary);
+          }
+          await clearHistory(userId);
+          await sendFollowup(body.token, NEW_COMMAND_REPLY);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error('webhook', `处理 /new 异常 userId=${userId}`, msg);
+          await clearHistory(userId);
+          await sendFollowup(body.token, NEW_COMMAND_REPLY).catch(() => {});
+        }
+      });
       return;
     }
 
@@ -106,9 +123,16 @@ app.post('/interactions', async (req, res) => {
 
         const userRounds = history.filter((m) => m.role === 'user').length;
 
-        const effectiveHistory = history.length === 0 && profile
-          ? [{ role: 'assistant' as const, content: startupSummaryPrompt(JSON.stringify(profile)) }]
-          : history;
+        let effectiveHistory = history;
+        if (history.length === 0) {
+          // 冷启动：优先从 DB 加载跨 session 摘要
+          const dbSummary = await loadSummaryFromDB(userId);
+          if (dbSummary) {
+            effectiveHistory = buildSummaryMessages(dbSummary);
+          } else if (profile) {
+            effectiveHistory = [{ role: 'assistant' as const, content: startupSummaryPrompt(JSON.stringify(profile)) }];
+          }
+        }
 
         const progressPromises: Promise<unknown>[] = [];
         const reply = await runAgent(question, {

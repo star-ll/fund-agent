@@ -52,6 +52,21 @@ export async function loadProfileFromDB(weworkUserId: string): Promise<UserProfi
   };
 }
 
+export async function loadSummaryFromDB(weworkUserId: string): Promise<string | null> {
+  const [rows] = await db.execute<any[]>(
+    'SELECT conversation_summary FROM users WHERE wework_user_id = ?',
+    [weworkUserId],
+  );
+  return rows[0]?.conversation_summary ?? null;
+}
+
+export async function saveSummaryToDB(weworkUserId: string, summary: string): Promise<void> {
+  await db.execute(
+    'UPDATE users SET conversation_summary = ? WHERE wework_user_id = ?',
+    [summary, weworkUserId],
+  );
+}
+
 export async function saveProfileToDB(
   weworkUserId: string,
   patch: Partial<Omit<UserProfile, 'updated_at'>>,

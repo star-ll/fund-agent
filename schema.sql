@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
   preferred_fund_types JSON        DEFAULT NULL,
   monthly_investment   VARCHAR(64) DEFAULT NULL,
   portfolio_scale      VARCHAR(64) DEFAULT NULL,
-  notes            TEXT            DEFAULT NULL,
+  notes                TEXT           DEFAULT NULL,
+  conversation_summary TEXT           DEFAULT NULL,
   updated_at       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   created_at       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
 --   ADD COLUMN preferred_fund_types  JSON         DEFAULT NULL AFTER investment_goal,
 --   ADD COLUMN monthly_investment    VARCHAR(64)  DEFAULT NULL AFTER preferred_fund_types,
 --   ADD COLUMN portfolio_scale       VARCHAR(64)  DEFAULT NULL AFTER monthly_investment;
+-- ALTER TABLE users ADD COLUMN conversation_summary TEXT DEFAULT NULL AFTER notes;
 
 CREATE TABLE IF NOT EXISTS holdings (
   id         INT UNSIGNED NOT NULL AUTO_INCREMENT,

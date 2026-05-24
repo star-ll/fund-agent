@@ -1,4 +1,5 @@
 import { redis } from '../../src/services/redis';
+import { summaryHistory } from '../../src/history/summary-history';
 import type OpenAI from 'openai';
 
 type Message = OpenAI.Chat.ChatCompletionMessageParam;
@@ -12,8 +13,8 @@ export async function getHistory(userId: string): Promise<Message[]> {
 }
 
 export async function setHistory(userId: string, history: Message[]): Promise<void> {
-  const trimmed = history.slice(-20);
-  await redis.setex(HISTORY_KEY(userId), HISTORY_TTL, JSON.stringify(trimmed));
+  const compressed = await summaryHistory(history);
+  await redis.setex(HISTORY_KEY(userId), HISTORY_TTL, JSON.stringify(compressed));
 }
 
 export async function clearHistory(userId: string): Promise<void> {
