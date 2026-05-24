@@ -1,4 +1,4 @@
-import { getFundInfo, getFundNav, calcMetrics } from '../services/fund';
+import { getFundInfo, getFundNav, getFundAchievement, getFundAnalysis, getFundProfitProbability, getFundRating, getFundIndustry, getFundBondPortfolio, getFundHoldDetail } from '../services/fund';
 import { getFundManager } from '../services/manager';
 import { getFundPortfolio, analyzePortfolio } from '../services/portfolio';
 import { extractText } from '../services/ocr';
@@ -8,19 +8,25 @@ import { webSearch } from '../services/search';
 
 export function getToolLabel(name: string, args: Record<string, unknown>): string {
   switch (name) {
-    case 'get_fund_info':      return `正在查询基金: ${args.fund_code}`;
-    case 'get_fund_nav':       return `正在获取净值历史: ${args.fund_code}${args.period ? `（${args.period}）` : ''}`;
-    case 'get_fund_manager':   return `正在查询基金经理: ${args.fund_code}`;
-    case 'get_fund_portfolio': return `正在获取持仓明细: ${args.fund_code}${args.date ? `（${args.date}）` : ''}`;
-    case 'get_user_profile':   return '正在读取用户档案';
-    case 'save_user_profile':  return '正在保存用户档案';
-    case 'read_image':         return `正在识别图片: ${args.file_path}`;
+    case 'get_fund_info':              return `正在查询基金: ${args.fund_code}`;
+    case 'get_fund_nav':               return `正在获取净值历史: ${args.fund_code}${args.period ? `（${args.period}）` : ''}`;
+    case 'get_fund_manager':           return `正在查询基金经理: ${args.fund_code}`;
+    case 'get_fund_portfolio':         return `正在获取持仓明细: ${args.fund_code}${args.date ? `（${args.date}）` : ''}`;
+    case 'get_fund_performance':       return `正在获取业绩数据: ${args.fund_code}`;
+    case 'get_fund_profit_probability': return `正在获取盈利概率: ${args.fund_code}`;
+    case 'get_fund_rating':            return `正在获取基金评级: ${args.fund_code}`;
+    case 'get_fund_asset_allocation':  return `正在获取资产配置: ${args.fund_code}`;
+    case 'get_fund_industry_allocation': return `正在获取行业配置: ${args.fund_code}`;
+    case 'get_fund_bond_portfolio':    return `正在获取债券持仓: ${args.fund_code}`;
+    case 'get_user_profile':           return '正在读取用户档案';
+    case 'save_user_profile':          return '正在保存用户档案';
+    case 'read_image':                 return `正在识别图片: ${args.file_path}`;
     case 'analyze_portfolio': {
       const holdings = args.holdings as Array<{ fund_code: string }>;
       return `正在分析持仓组合: ${holdings.map((h) => h.fund_code).join('、')}`;
     }
-    case 'web_search':         return `正在搜索: ${args.query}`;
-    default:                   return `${name}…`;
+    case 'web_search':                 return `正在搜索: ${args.query}`;
+    default:                           return `${name}…`;
   }
 }
 
@@ -34,20 +40,41 @@ export async function dispatchTool(
     case 'get_fund_info':
       return { callMessage: getToolLabel(name, args), data: await getFundInfo(args.fund_code as string) };
 
-    case 'get_fund_nav': {
-      const navList = await getFundNav(
-        args.fund_code as string,
-        '单位净值走势',
-        (args.period as string) ?? '成立来',
-      );
-      return { callMessage: getToolLabel(name, args), data: { recent: navList.slice(-30), metrics: calcMetrics(navList) } };
-    }
+    case 'get_fund_nav':
+      return {
+        callMessage: getToolLabel(name, args),
+        data: await getFundNav(args.fund_code as string, '单位净值走势', (args.period as string) ?? '成立来'),
+      };
 
     case 'get_fund_manager':
       return { callMessage: getToolLabel(name, args), data: await getFundManager(args.fund_code as string) };
 
     case 'get_fund_portfolio':
       return { callMessage: getToolLabel(name, args), data: await getFundPortfolio(args.fund_code as string, args.date as string) };
+
+    // 业绩：年化收益、最大回撤、同类排名 + 波动率、夏普比率
+    case 'get_fund_performance': {
+      const [achievement, analysis] = await Promise.all([
+        getFundAchievement(args.fund_code as string),
+        getFundAnalysis(args.fund_code as string),
+      ]);
+      return { callMessage: getToolLabel(name, args), data: { achievement, analysis } };
+    }
+
+    case 'get_fund_profit_probability':
+      return { callMessage: getToolLabel(name, args), data: await getFundProfitProbability(args.fund_code as string) };
+
+    case 'get_fund_rating':
+      return { callMessage: getToolLabel(name, args), data: await getFundRating(args.fund_code as string) };
+
+    case 'get_fund_asset_allocation':
+      return { callMessage: getToolLabel(name, args), data: await getFundHoldDetail(args.fund_code as string, args.date as string) };
+
+    case 'get_fund_industry_allocation':
+      return { callMessage: getToolLabel(name, args), data: await getFundIndustry(args.fund_code as string, args.date as string) };
+
+    case 'get_fund_bond_portfolio':
+      return { callMessage: getToolLabel(name, args), data: await getFundBondPortfolio(args.fund_code as string, args.date as string) };
 
     case 'get_user_profile':
       if (userId) {

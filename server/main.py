@@ -241,6 +241,138 @@ async def fund_estimate(
 
 
 # ---------------------------------------------------------------------------
+# 基金业绩（雪球：年度+阶段收益、最大回撤、同类排名）
+# ---------------------------------------------------------------------------
+
+@app.get("/fund/achievement")
+async def fund_achievement(fund_code: str = Query(..., description="基金代码")):
+    try:
+        cache_key = f"fund_achievement_{fund_code}"
+        cached = _get_cached(cache_key)
+        if cached is not None:
+            return cached.to_dict(orient="records")
+        df = await _run(ak.fund_individual_achievement_xq, symbol=fund_code)
+        if df.empty:
+            return []
+        _set_cached(cache_key, df, _TTL["fund_nav"])
+        return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 基金数据分析（雪球：年化波动率、夏普比率、同类风险收益比）
+# ---------------------------------------------------------------------------
+
+@app.get("/fund/analysis")
+async def fund_analysis(fund_code: str = Query(..., description="基金代码")):
+    try:
+        cache_key = f"fund_analysis_{fund_code}"
+        cached = _get_cached(cache_key)
+        if cached is not None:
+            return cached.to_dict(orient="records")
+        df = await _run(ak.fund_individual_analysis_xq, symbol=fund_code)
+        if df.empty:
+            return []
+        _set_cached(cache_key, df, _TTL["fund_nav"])
+        return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 基金盈利概率（雪球：持有满 X 时间的历史盈利概率及平均收益）
+# ---------------------------------------------------------------------------
+
+@app.get("/fund/profit-probability")
+async def fund_profit_probability(fund_code: str = Query(..., description="基金代码")):
+    try:
+        cache_key = f"fund_profit_prob_{fund_code}"
+        cached = _get_cached(cache_key)
+        if cached is not None:
+            return cached.to_dict(orient="records")
+        df = await _run(ak.fund_individual_profit_probability_xq, symbol=fund_code)
+        if df.empty:
+            return []
+        _set_cached(cache_key, df, _TTL["fund_nav"])
+        return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 基金行业配置（天天基金：持仓行业占净值比例，按季度）
+# ---------------------------------------------------------------------------
+
+@app.get("/fund/industry")
+async def fund_industry(
+    fund_code: str = Query(..., description="基金代码"),
+    date: str = Query(..., description="年份，例如 2024"),
+):
+    try:
+        df = await _run(ak.fund_portfolio_industry_allocation_em, symbol=fund_code, date=date)
+        if df.empty:
+            return []
+        return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 债券持仓（天天基金：债券名称、占净值比例、持仓市值）
+# ---------------------------------------------------------------------------
+
+@app.get("/fund/bond-portfolio")
+async def fund_bond_portfolio(
+    fund_code: str = Query(..., description="基金代码"),
+    date: str = Query(..., description="年份，例如 2023"),
+):
+    try:
+        df = await _run(ak.fund_portfolio_bond_hold_em, symbol=fund_code, date=date)
+        if df.empty:
+            return []
+        return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 基金评级（天天基金：上证/招商/济安评级，缓存整表按代码过滤）
+# ---------------------------------------------------------------------------
+
+@app.get("/fund/rating")
+async def fund_rating(fund_code: str = Query(..., description="基金代码")):
+    try:
+        df = await _cached_run("fund_rating_all", "fund_manager", ak.fund_rating_all)
+        row = df[df["代码"].astype(str) == fund_code]
+        if row.empty:
+            raise HTTPException(status_code=404, detail=f"基金 {fund_code} 暂无评级数据")
+        return _to_json(row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 大类资产配置（雪球：股票/现金/其他仓位占比，按季度日期）
+# ---------------------------------------------------------------------------
+
+@app.get("/fund/hold-detail")
+async def fund_hold_detail(
+    fund_code: str = Query(..., description="基金代码"),
+    date: str = Query(..., description="季度日期，格式 20231231"),
+):
+    try:
+        df = await _run(ak.fund_individual_detail_hold_xq, symbol=fund_code, date=date)
+        if df.empty:
+            return []
+        return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
 # OCR（阿里云 RecognizeAllText）
 # ---------------------------------------------------------------------------
 

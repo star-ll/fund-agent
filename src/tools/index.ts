@@ -2,6 +2,7 @@ import type OpenAI from 'openai';
 import { config } from '../utils/config';
 
 const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
+  // 基金基本信息：名称、类型、净值快照，不含历史数据
   {
     type: 'function',
     function: {
@@ -16,11 +17,12 @@ const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  // 净值历史走势，适合查看净值曲线；风险收益指标请用 get_fund_performance
   {
     type: 'function',
     function: {
       name: 'get_fund_nav',
-      description: '获取基金净值历史数据，并返回年化收益率、最大回撤、波动率、夏普比率等指标',
+      description: '获取基金净值历史走势数据',
       parameters: {
         type: 'object',
         properties: {
@@ -35,6 +37,7 @@ const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  // 基金经理：从业年限、管理规模、历史最佳回报
   {
     type: 'function',
     function: {
@@ -49,6 +52,7 @@ const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  // 基金持仓股票明细，按季度披露；date 传年份即可，取该年最新一期
   {
     type: 'function',
     function: {
@@ -64,6 +68,101 @@ const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  // 评估单只基金性能时的首选工具：来自雪球数据源，比自计算净值更准确
+  // 同时返回 achievement（年度+阶段收益、最大回撤、同类排名）和 analysis（波动率、夏普比率、同类风险对比）
+  {
+    type: 'function',
+    function: {
+      name: 'get_fund_performance',
+      description: '获取基金多周期业绩数据，包括年度收益率、阶段收益率、最大回撤、年化波动率、夏普比率及同类排名。评估单只基金表现时优先调用此工具，数据来自雪球，比净值历史自计算更准确。',
+      parameters: {
+        type: 'object',
+        properties: {
+          fund_code: { type: 'string', description: '基金代码' },
+        },
+        required: ['fund_code'],
+      },
+    },
+  },
+  // 历史任意时点买入，持有满 X 时间后的盈利概率；适合给用户建议持有时长
+  {
+    type: 'function',
+    function: {
+      name: 'get_fund_profit_probability',
+      description: '获取历史任意时点买入、持有满 X 时间后的盈利概率及平均收益。适用于建议持有时长、判断当前是否适合持有。',
+      parameters: {
+        type: 'object',
+        properties: {
+          fund_code: { type: 'string', description: '基金代码' },
+        },
+        required: ['fund_code'],
+      },
+    },
+  },
+  // 第三方评级：上海证券、招商证券、济安金信（1-5 星）；推荐时用作佐证
+  {
+    type: 'function',
+    function: {
+      name: 'get_fund_rating',
+      description: '获取基金第三方评级，包括上海证券、招商证券、济安金信评级（1-5星）。筛选推荐基金时提供佐证。',
+      parameters: {
+        type: 'object',
+        properties: {
+          fund_code: { type: 'string', description: '基金代码' },
+        },
+        required: ['fund_code'],
+      },
+    },
+  },
+  // 大类资产配置：股票/现金/其他仓位比例；判断混合型基金实际股票敞口
+  {
+    type: 'function',
+    function: {
+      name: 'get_fund_asset_allocation',
+      description: '获取基金大类资产配置比例（股票/现金/其他），按季度披露。适用于判断基金实际股票仓位，分析混合型基金的风险敞口。',
+      parameters: {
+        type: 'object',
+        properties: {
+          fund_code: { type: 'string', description: '基金代码' },
+          date: { type: 'string', description: '季度日期，格式 20231231' },
+        },
+        required: ['fund_code', 'date'],
+      },
+    },
+  },
+  // 行业配置：分析持仓集中度、多只基金的行业重叠风险
+  {
+    type: 'function',
+    function: {
+      name: 'get_fund_industry_allocation',
+      description: '获取基金持仓的行业配置比例，按占净值比例降序排列。适用于分析持仓集中度、多只基金之间的行业重叠风险。',
+      parameters: {
+        type: 'object',
+        properties: {
+          fund_code: { type: 'string', description: '基金代码' },
+          date: { type: 'string', description: '年份，例如 2024' },
+        },
+        required: ['fund_code', 'date'],
+      },
+    },
+  },
+  // 债券持仓明细：适用于债券型/混合型基金的信用风险和久期分析
+  {
+    type: 'function',
+    function: {
+      name: 'get_fund_bond_portfolio',
+      description: '获取债券型/混合型基金的债券持仓明细，包括债券名称、占净值比例、持仓市值。适用于分析固收产品的信用风险和久期结构。',
+      parameters: {
+        type: 'object',
+        properties: {
+          fund_code: { type: 'string', description: '基金代码' },
+          date: { type: 'string', description: '年份，例如 2023' },
+        },
+        required: ['fund_code', 'date'],
+      },
+    },
+  },
+  // OCR 识别持仓截图，提取文字后由 LLM 解析基金代码/份额/成本，再调 analyze_portfolio
   {
     type: 'function',
     function: {
@@ -82,11 +181,12 @@ const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  // 多基金组合分析：加权收益、整体回撤、波动率；需要 shares + cost 才能算权重
   {
     type: 'function',
     function: {
       name: 'analyze_portfolio',
-      description: '分析投资者持仓组合，计算总收益、年化收益、最大回撤、波动率等',
+      description: '分析投资者持仓组合，计算总收益、各基金权重，并为每只基金单独展示多周期业绩和风险指标（来自雪球数据源）。',
       parameters: {
         type: 'object',
         properties: {
@@ -108,6 +208,7 @@ const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  // 持久化用户档案（持仓、风险偏好等），新数据与已有数据合并；档案会在每次对话的 system prompt 中自动注入，无需主动读取
   {
     type: 'function',
     function: {
@@ -142,6 +243,7 @@ const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
   },
 ];
 
+// 仅在配置了搜索服务时启用，避免 LLM 在无搜索能力时仍尝试调用
 const webSearchTool: OpenAI.Chat.ChatCompletionTool = {
   type: 'function',
   function: {
