@@ -241,7 +241,71 @@ async def fund_estimate(
 
 
 # ---------------------------------------------------------------------------
-# 基金业绩（雪球：年度+阶段收益、最大回撤、同类排名）
+# 市场行情：A股主要指数实时行情
+# ---------------------------------------------------------------------------
+
+INDEX_TYPES = ["上证系列指数", "深证系列指数", "指数成份", "中证系列指数"]
+
+
+@app.get("/market/index")
+async def market_index(
+    symbol: str = Query("上证系列指数", description=f"指数类型：{INDEX_TYPES}"),
+):
+    if symbol not in INDEX_TYPES:
+        raise HTTPException(status_code=400, detail=f"symbol 必须为 {INDEX_TYPES} 之一")
+    try:
+        df = await _run(ak.stock_zh_index_spot_em, symbol=symbol)
+        if df.empty:
+            return []
+        return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 市场行情：北向资金净流入汇总
+# ---------------------------------------------------------------------------
+
+@app.get("/market/northbound")
+async def market_northbound():
+    try:
+        df = await _run(ak.stock_hsgt_fund_flow_summary_em)
+        if df.empty:
+            return []
+        return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 市场行情：指定行业板块历史K线（天天基金/东方财富）
+# ---------------------------------------------------------------------------
+
+@app.get("/market/sector")
+async def market_sector(
+    symbol: str = Query(..., description="行业名称，例如：互联网服务"),
+    start_date: str = Query(..., description="开始日期，格式 YYYYMMDD"),
+    end_date: str = Query(..., description="结束日期，格式 YYYYMMDD"),
+    period: str = Query("daily", description="周期：daily / weekly / monthly"),
+):
+    try:
+        df = await _run(
+            ak.stock_board_industry_hist_em,
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            period=period,
+            adjust="",
+        )
+        if df.empty:
+            return []
+        return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 基金风险分析（雪球：年度+阶段收益、最大回撤、同类排名）
 # ---------------------------------------------------------------------------
 
 @app.get("/fund/achievement")

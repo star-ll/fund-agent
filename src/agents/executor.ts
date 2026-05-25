@@ -11,6 +11,7 @@ import { compressAllHistory } from '../history/summary-history';
 import { buildMyHoldingsReply } from '../commands/my';
 import { NEW_COMMAND_REPLY } from '../commands/new';
 import { HELP_TEXT } from '../commands/help';
+import { MARKET_PROMPT } from '../commands/market';
 import type { UserProfile } from '../services/storage';
 
 const client = new OpenAI({ baseURL: config.llm.baseURL, apiKey: config.llm.apiKey });
@@ -70,6 +71,8 @@ async function handleBuiltinCommand(
   history: Message[],
   userId?: string,
   onClearHistory?: () => Promise<void>,
+  systemPrompt?: string,
+  onProgress?: (label: string) => void,
 ): Promise<string> {
   const cmd = input.split(/\s+/)[0].toLowerCase();
   const tag = userId ? `cmd:${userId}` : 'cmd:cli';
@@ -90,6 +93,9 @@ async function handleBuiltinCommand(
     }
     case '/my':
       return buildMyHoldingsReply(userId);
+    case '/market':
+      // 不在此处直接返回，而是把 prompt 交给 agent 执行，让 LLM 拉取数据后推理
+      return runAgent(MARKET_PROMPT, { history, userId, systemPrompt, onProgress });
     case '/help':
       return HELP_TEXT;
     default:
@@ -112,7 +118,7 @@ export async function runAgent(
   // 内置指令路由
   const trimmed = userMessage.trim();
   if (trimmed.startsWith('/')) {
-    return handleBuiltinCommand(trimmed, history, userId, onClearHistory);
+    return handleBuiltinCommand(trimmed, history, userId, onClearHistory, historySystemPrompt, progressCb);
   }
 
   const tag = userId ? `agent:${userId}` : 'agent:cli';

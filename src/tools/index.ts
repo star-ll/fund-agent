@@ -244,6 +244,82 @@ const baseTools: OpenAI.Chat.ChatCompletionTool[] = [
 ];
 
 // 仅在配置了搜索服务时启用，避免 LLM 在无搜索能力时仍尝试调用
+const marketTools: OpenAI.Chat.ChatCompletionTool[] = [
+  // 盘中实时估值：查某只或某类基金的实时估算净值和涨跌
+  {
+    type: 'function',
+    function: {
+      name: 'get_fund_estimate',
+      description: '获取基金盘中实时净值估算，包括估算值、估算增长率和估算偏差。适用于交易日盘中查询基金实时涨跌情况。',
+      parameters: {
+        type: 'object',
+        properties: {
+          symbol: {
+            type: 'string',
+            enum: ['全部', '股票型', '混合型', '债券型', '指数型', 'QDII', 'ETF联接', 'LOF', '场内交易基金'],
+            description: '基金类型，默认全部',
+          },
+        },
+      },
+    },
+  },
+  // A股主要指数实时行情，市场概览的基础数据；适合判断当天市场强弱
+  {
+    type: 'function',
+    function: {
+      name: 'get_market_index',
+      description: '获取A股主要指数实时行情，包括上证、深证、中证等系列指数的最新价、涨跌幅和成交额。适用于判断市场整体趋势和风险偏好。',
+      parameters: {
+        type: 'object',
+        properties: {
+          symbol: {
+            type: 'string',
+            enum: ['上证系列指数', '深证系列指数', '指数成份', '中证系列指数'],
+            description: '指数类型，默认上证系列指数',
+          },
+        },
+      },
+    },
+  },
+  // 北向资金是外资情绪先行指标，连续流入/流出对市场风格有明显影响
+  {
+    type: 'function',
+    function: {
+      name: 'get_northbound_flow',
+      description: '获取北向资金（沪深港通）近期净流入数据。北向资金是外资情绪先行指标，持续净流入通常预示市场偏强。适用于市场情绪分析和调仓时机判断。',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  // 查特定行业近期涨跌趋势；需要指定行业名称，不适合全行业扫描
+  {
+    type: 'function',
+    function: {
+      name: 'get_sector_trend',
+      description: '获取指定行业板块的历史K线数据，包括涨跌幅和成交额。适用于分析特定行业近期走势，判断行业轮动方向。行业名称示例：互联网服务、新能源、医药生物。',
+      parameters: {
+        type: 'object',
+        properties: {
+          symbol: { type: 'string', description: '行业名称，例如：互联网服务' },
+          start_date: { type: 'string', description: '开始日期，格式 YYYYMMDD，例如 20250101' },
+          end_date: { type: 'string', description: '结束日期，格式 YYYYMMDD' },
+          period: {
+            type: 'string',
+            enum: ['daily', 'weekly', 'monthly'],
+            description: '周期，默认 daily',
+          },
+        },
+        required: ['symbol', 'start_date', 'end_date'],
+      },
+    },
+  },
+];
+
+baseTools.push(...marketTools);
+
+// 仅在配置了搜索服务时启用，避免 LLM 在无搜索能力时仍尝试调用
 const webSearchTool: OpenAI.Chat.ChatCompletionTool = {
   type: 'function',
   function: {

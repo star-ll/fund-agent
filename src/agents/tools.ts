@@ -1,4 +1,4 @@
-import { getFundInfo, getFundNav, getFundAchievement, getFundAnalysis, getFundProfitProbability, getFundRating, getFundIndustry, getFundBondPortfolio, getFundHoldDetail } from '../services/fund';
+import { getFundInfo, getFundNav, getFundAchievement, getFundAnalysis, getFundProfitProbability, getFundRating, getFundIndustry, getFundBondPortfolio, getFundHoldDetail, getFundEstimate, getMarketIndex, getNorthboundFlow, getSectorTrend } from '../services/fund';
 import { getFundManager } from '../services/manager';
 import { getFundPortfolio, analyzePortfolio } from '../services/portfolio';
 import { extractText } from '../services/ocr';
@@ -18,6 +18,10 @@ export function getToolLabel(name: string, args: Record<string, unknown>): strin
     case 'get_fund_asset_allocation':  return `正在获取资产配置: ${args.fund_code}`;
     case 'get_fund_industry_allocation': return `正在获取行业配置: ${args.fund_code}`;
     case 'get_fund_bond_portfolio':    return `正在获取债券持仓: ${args.fund_code}`;
+    case 'get_fund_estimate':          return `正在获取基金估值: ${args.symbol ?? '全部'}`;
+    case 'get_market_index':           return `正在获取指数行情: ${args.symbol ?? '上证系列指数'}`;
+    case 'get_northbound_flow':        return '正在获取北向资金数据';
+    case 'get_sector_trend':           return `正在获取行业走势: ${args.symbol}`;
     case 'get_user_profile':           return '正在读取用户档案';
     case 'save_user_profile':          return '正在保存用户档案';
     case 'read_image':                 return `正在识别图片: ${args.file_path}`;
@@ -98,6 +102,26 @@ export async function dispatchTool(
         data: await analyzePortfolio(holdings.map((h) => ({ fundCode: h.fund_code, shares: h.shares, cost: h.cost }))),
       };
     }
+
+    case 'get_fund_estimate':
+      return { callMessage: getToolLabel(name, args), data: await getFundEstimate(args.symbol as string | undefined) };
+
+    case 'get_market_index':
+      return { callMessage: getToolLabel(name, args), data: await getMarketIndex(args.symbol as string | undefined) };
+
+    case 'get_northbound_flow':
+      return { callMessage: getToolLabel(name, args), data: await getNorthboundFlow() };
+
+    case 'get_sector_trend':
+      return {
+        callMessage: getToolLabel(name, args),
+        data: await getSectorTrend(
+          args.symbol as string,
+          args.start_date as string,
+          args.end_date as string,
+          (args.period as string) ?? 'daily',
+        ),
+      };
 
     case 'web_search':
       return { callMessage: getToolLabel(name, args), data: await webSearch(args.query as string, args.max_results as number | undefined) };

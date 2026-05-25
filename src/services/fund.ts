@@ -144,3 +144,68 @@ export async function getFundHoldDetail(fundCode: string, date: string): Promise
   });
   return data;
 }
+
+// 基金净值估算（东方财富：盘中实时估算值和偏差）
+export interface FundEstimate {
+  基金代码: string;
+  基金名称: string;
+  估算值: string;
+  估算增长率: string;
+  估算偏差: string;
+}
+
+// A股指数实时行情
+export interface MarketIndex {
+  名称: string;
+  最新价: string;
+  涨跌幅: string;
+  成交额: string;
+}
+
+// 北向资金净流入
+export interface NorthboundFlow {
+  日期: string;
+  北向资金: string;
+  沪股通: string;
+  深股通: string;
+}
+
+// 行业板块历史K线
+export interface SectorTrend {
+  日期: string;
+  开盘: string;
+  收盘: string;
+  涨跌幅: string;
+  成交额: string;
+}
+
+export async function getFundEstimate(symbol = '全部'): Promise<FundEstimate[]> {
+  const { data } = await akshareClient.get<FundEstimate[]>('/fund/estimate', {
+    params: { symbol },
+  });
+  return data;
+}
+
+export async function getMarketIndex(symbol = '上证系列指数'): Promise<MarketIndex[]> {
+  const { data } = await akshareClient.get<MarketIndex[]>('/market/index', {
+    params: { symbol },
+  });
+  return data;
+}
+
+export async function getNorthboundFlow(): Promise<NorthboundFlow[]> {
+  const { data } = await akshareClient.get<NorthboundFlow[]>('/market/northbound');
+  return data;
+}
+
+export async function getSectorTrend(
+  symbol: string,
+  startDate: string,
+  endDate: string,
+  period = 'daily',
+): Promise<SectorTrend[]> {
+  const { data } = await akshareClient.get<SectorTrend[]>('/market/sector', {
+    params: { symbol, start_date: startDate, end_date: endDate, period },
+  });
+  return data;
+}
