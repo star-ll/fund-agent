@@ -42,10 +42,8 @@ function classify(rawType: string): { l1: string; l2: string } {
   if (/FOF/i.test(t))                     return { l1: 'FOF', l2: '' };
   if (/货币|货币市场/i.test(t))           return { l1: '货币型', l2: '' };
 
-  // 股票型
   if (/股票型/.test(t))                   return { l1: '股票型', l2: parseL2(t, '股票') };
 
-  // 混合型（偏股 / 偏债 / 灵活 / 平衡）
   if (/混合型/.test(t)) {
     if (/偏股/.test(t))                   return { l1: '混合型', l2: '偏股混合' };
     if (/偏债/.test(t))                   return { l1: '混合型', l2: '偏债混合' };
@@ -54,7 +52,6 @@ function classify(rawType: string): { l1: string; l2: string } {
     return { l1: '混合型', l2: parseL2(t, '混合') };
   }
 
-  // 债券型
   if (/债券型/.test(t)) {
     if (/长债|中长期/.test(t))            return { l1: '债券型', l2: '中长期纯债' };
     if (/中短债|短债/.test(t))            return { l1: '债券型', l2: '中短债' };
@@ -64,14 +61,12 @@ function classify(rawType: string): { l1: string; l2: string } {
     return { l1: '债券型', l2: parseL2(t, '债券') };
   }
 
-  // 指数型
   if (/指数型/.test(t)) {
     if (/ETF联接|ETF/.test(t))            return { l1: '指数型', l2: 'ETF联接' };
     if (/增强/.test(t))                   return { l1: '指数型', l2: '增强指数' };
     return { l1: '指数型', l2: parseL2(t, '指数') };
   }
 
-  // ETF 场内
   if (/ETF/.test(t))                      return { l1: '指数型', l2: 'ETF' };
   if (/LOF/.test(t))                      return { l1: '混合型', l2: 'LOF' };
 
@@ -79,7 +74,6 @@ function classify(rawType: string): { l1: string; l2: string } {
 }
 
 function parseL2(raw: string, l1: string): string {
-  // 去掉前缀 "股票型-", "混合型-", etc.，返回剩余部分
   const parts = raw.split(/[-–—]/);
   if (parts.length > 1) return parts.slice(1).join('-').trim();
   return raw.replace(l1, '').replace('型', '').trim();
@@ -91,7 +85,7 @@ function parseL2(raw: string, l1: string): string {
 const CACHE_TTL_DAYS = 7;
 
 export async function getFundCache(fundCode: string): Promise<FundCache | null> {
-  const [rows] = await db.query<any[]>(
+  const [rows] = await db.execute<any[]>(
     `SELECT
       fund_code, fund_name, fund_type_raw, category_l1, category_l2,
       fund_company, manager_name, manager_tenure, manager_best_return,
@@ -106,13 +100,12 @@ export async function getFundCache(fundCode: string): Promise<FundCache | null> 
 }
 
 export async function saveFundInfo(fundCode: string, data: {
-  // get_fund_info 返回字段
   fund_name?: string;
   fund_type?: string;
   fund_company?: string;
 }): Promise<void> {
   const { l1, l2 } = classify(data.fund_type ?? '');
-  await db.query(
+  await db.execute(
     `INSERT INTO fund_cache (fund_code, fund_name, fund_type_raw, category_l1, category_l2, fund_company, fetched_at)
      VALUES (?, ?, ?, ?, ?, ?, NOW())
      ON DUPLICATE KEY UPDATE
@@ -122,8 +115,9 @@ export async function saveFundInfo(fundCode: string, data: {
        category_l2 = VALUES(category_l2),
        fund_company = VALUES(fund_company),
        fetched_at = NOW()`,
-    [fundCode, data.fund_name, data.fund_type, l1, l2, data.fund_company],
+    [fundCode, data.fund_name ?? null, data.fund_type ?? null, l1, l2, data.fund_company ?? null],
   );
+  console.log(`[fund-cache] saved info for ${fundCode} name=${data.fund_name} type=${l1}/${l2}`);
 }
 
 export async function saveManagerInfo(fundCode: string, data: {
@@ -131,7 +125,7 @@ export async function saveManagerInfo(fundCode: string, data: {
   manager_tenure?: number;
   manager_best_return?: string;
 }): Promise<void> {
-  await db.query(
+  await db.execute(
     `INSERT INTO fund_cache (fund_code, manager_name, manager_tenure, manager_best_return, fetched_at)
      VALUES (?, ?, ?, ?, NOW())
      ON DUPLICATE KEY UPDATE
@@ -139,8 +133,9 @@ export async function saveManagerInfo(fundCode: string, data: {
        manager_tenure = VALUES(manager_tenure),
        manager_best_return = VALUES(manager_best_return),
        fetched_at = NOW()`,
-    [fundCode, data.manager_name, data.manager_tenure, data.manager_best_return],
+    [fundCode, data.manager_name ?? null, data.manager_tenure ?? null, data.manager_best_return ?? null],
   );
+  console.log(`[fund-cache] saved manager for ${fundCode} name=${data.manager_name}`);
 }
 
 export async function saveRatingInfo(fundCode: string, data: {
@@ -148,7 +143,7 @@ export async function saveRatingInfo(fundCode: string, data: {
   rating_merchants?: string;
   rating_jian?: string;
 }): Promise<void> {
-  await db.query(
+  await db.execute(
     `INSERT INTO fund_cache (fund_code, rating_shanghai, rating_merchants, rating_jian, fetched_at)
      VALUES (?, ?, ?, ?, NOW())
      ON DUPLICATE KEY UPDATE
@@ -156,8 +151,9 @@ export async function saveRatingInfo(fundCode: string, data: {
        rating_merchants = VALUES(rating_merchants),
        rating_jian = VALUES(rating_jian),
        fetched_at = NOW()`,
-    [fundCode, data.rating_shanghai, data.rating_merchants, data.rating_jian],
+    [fundCode, data.rating_shanghai ?? null, data.rating_merchants ?? null, data.rating_jian ?? null],
   );
+  console.log(`[fund-cache] saved rating for ${fundCode}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +190,7 @@ export async function searchFundCache(params: {
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const limit = Math.min(params.limit ?? 20, 50);
 
-  const [rows] = await db.query<any[]>(
+  const [rows] = await db.execute<any[]>(
     `SELECT fund_code, fund_name, fund_type_raw, category_l1, category_l2,
             fund_company, manager_name, rating_shanghai, rating_merchants, rating_jian
      FROM fund_cache

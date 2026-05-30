@@ -100,10 +100,14 @@ export async function getFundInfo(fundCode: string): Promise<FundInfo> {
 
   // 回写缓存：基金名称（类型由 rating/manager 补充）
   if (data.基金简称) {
-    saveFundInfo(fundCode, {
-      fund_name: data.基金简称,
-      fund_type: (data as any).类型, // fund_open_fund_daily_em 可能不含此字段
-    }).catch(() => {}); // 非关键路径，不阻塞返回
+    try {
+      await saveFundInfo(fundCode, {
+        fund_name: data.基金简称,
+        fund_type: (data as any).类型,
+      });
+    } catch (err) {
+      console.error(`[fund-cache] saveFundInfo failed for ${fundCode}:`, err instanceof Error ? err.message : String(err));
+    }
   }
 
   return data;
