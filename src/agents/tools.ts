@@ -5,6 +5,7 @@ import { extractText } from '../services/ocr';
 import { loadProfile, saveProfile } from '../services/storage';
 import { loadProfileFromDB, saveProfileToDB } from '../services/user';
 import { webSearch } from '../services/search';
+import { searchFundCache } from '../services/fund-cache';
 
 export function getToolLabel(name: string, args: Record<string, unknown>): string {
   switch (name) {
@@ -30,6 +31,14 @@ export function getToolLabel(name: string, args: Record<string, unknown>): strin
       return `正在分析持仓组合: ${holdings.map((h) => h.fund_code).join('、')}`;
     }
     case 'web_search':                 return `正在搜索: ${args.query}`;
+    case 'search_fund_cache': {
+      const parts: string[] = [];
+      if (args.category_l1) parts.push(String(args.category_l1));
+      if (args.category_l2) parts.push(String(args.category_l2));
+      if (args.fund_company) parts.push(String(args.fund_company));
+      if (args.keyword) parts.push(String(args.keyword));
+      return parts.length > 0 ? `正在查找基金: ${parts.join(' / ')}` : '正在查找基金';
+    }
     default:                           return `${name}…`;
   }
 }
@@ -125,6 +134,18 @@ export async function dispatchTool(
 
     case 'web_search':
       return { callMessage: getToolLabel(name, args), data: await webSearch(args.query as string, args.max_results as number | undefined) };
+
+    case 'search_fund_cache':
+      return {
+        callMessage: getToolLabel(name, args),
+        data: await searchFundCache({
+          category_l1: args.category_l1 as string | undefined,
+          category_l2: args.category_l2 as string | undefined,
+          fund_company: args.fund_company as string | undefined,
+          keyword: args.keyword as string | undefined,
+          limit: args.limit as number | undefined,
+        }),
+      };
 
     default:
       throw new Error(`Unknown tool: ${name}`);

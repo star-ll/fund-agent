@@ -18,6 +18,68 @@ const client = new OpenAI({ baseURL: config.llm.baseURL, apiKey: config.llm.apiK
 
 type Message = OpenAI.Chat.ChatCompletionMessageParam;
 
+// ---------------------------------------------------------------------------
+// Token 估算：混合中英文，2 字符 ≈ 1 token（略保守，适配中文比例高的场景）
+// ---------------------------------------------------------------------------
+function estimateTokens(messages: Message[]): number {
+  let total = 0;
+  for (const m of messages) {
+    const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+    // tool 消息的 content 是 JSON 字符串，长度同样按 2:1 算
+    total += Math.ceil(content.length / 2);
+    if ('tool_calls' in m && m.tool_calls) {
+      total += Math.ceil(JSON.stringify(m.tool_calls).length / 2);
+    }
+  }
+  return total;
+}
+
+// ---------------------------------------------------------------------------
+// 上下文溢出保护：超限时裁剪最旧的 tool 结果消息，保持 system+对话结构不变
+// CONTEXT_LIMIT 按 1M token 的 85% 设，留 buffer 给下一轮推理输出
+// ---------------------------------------------------------------------------
+const CONTEXT_LIMIT = 850_000;
+
+function trimContext(messages: Message[]): Message[] {
+  // 找到 system 消息位置（应是第一条）
+  const sysEnd = messages[0]?.role === 'system' ? 1 : 0;
+
+  // 从前往后扫描：缩减旧 tool 消息的 content，每条约 200 字符后截断
+  for (let i = sysEnd; i < messages.length; i++) {
+    if (estimateTokens(messages) <= CONTEXT_LIMIT) break;
+
+    const m = messages[i];
+    if (m.role === 'tool' && typeof m.content === 'string' && m.content.length > 500) {
+      // 尝试解析 JSON，裁剪数组元素；失败则直接字符串截断
+      try {
+        const parsed = JSON.parse(m.content);
+        if (Array.isArray(parsed) && parsed.length > 5) {
+          m.content = JSON.stringify(parsed.slice(0, 5)) + `\n…（已截断 ${parsed.length - 5} 条）`;
+          continue;
+        }
+        if (typeof parsed === 'object' && parsed !== null) {
+          // 对象类型，截断最长的字段
+          let maxKey = '';
+          let maxLen = 0;
+          for (const [k, v] of Object.entries(parsed)) {
+            const s = typeof v === 'string' ? v : JSON.stringify(v);
+            if (s.length > maxLen) { maxKey = k; maxLen = s.length; }
+          }
+          if (maxLen > 300 && typeof parsed[maxKey] === 'string') {
+            parsed[maxKey] = (parsed[maxKey] as string).slice(0, 300) + '…';
+            m.content = JSON.stringify(parsed);
+          }
+        }
+      } catch {
+        // 非 JSON 文本，直接截断
+        m.content = m.content.slice(0, 400) + '…(truncated)';
+      }
+    }
+  }
+
+  return messages;
+}
+
 function formatProfileForPrompt(profile: UserProfile): string {
   const lines: string[] = ['## 当前用户档案'];
 
@@ -137,6 +199,16 @@ export async function runAgent(
 
   for (let i = 0; i < LOOP_LIMIT; i++) {
     logger.info(tag, `第 ${i + 1} 轮思考`);
+
+    // 上下文溢出保护：超限时裁剪最旧的 tool 结果
+    const est = estimateTokens(messages);
+    if (est > CONTEXT_LIMIT) {
+      logger.warn(tag, `上下文超限 ${est} > ${CONTEXT_LIMIT} tokens，触发裁剪`);
+      trimContext(messages);
+      const afterTrim = estimateTokens(messages);
+      logger.info(tag, `裁剪后 token 数: ${afterTrim}`);
+    }
+
     progressCb?.('思考中…');
 
     // LLM 推理

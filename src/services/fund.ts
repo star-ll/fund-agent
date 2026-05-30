@@ -1,4 +1,5 @@
 import { akshareClient } from '../utils/http';
+import { getFundCache, saveFundInfo, saveRatingInfo } from './fund-cache';
 
 export interface FundInfo {
   基金代码: string;
@@ -118,9 +119,43 @@ export async function getFundProfitProbability(fundCode: string): Promise<FundPr
 }
 
 export async function getFundRating(fundCode: string): Promise<FundRating[]> {
+  // 先查缓存
+  const cached = await getFundCache(fundCode);
+  if (cached?.rating_shanghai || cached?.rating_merchants || cached?.rating_jian) {
+    return [{
+      代码: fundCode,
+      简称: cached.fund_name ?? '',
+      基金经理: cached.manager_name ?? '',
+      基金公司: cached.fund_company ?? '',
+      上海证券: cached.rating_shanghai ?? '',
+      招商证券: cached.rating_merchants ?? '',
+      济安金信: cached.rating_jian ?? '',
+      手续费: '',
+      类型: cached.fund_type_raw ?? '',
+    }];
+  }
+
+  // 调 API 取数据
   const { data } = await akshareClient.get<FundRating[]>('/fund/rating', {
     params: { fund_code: fundCode },
   });
+
+  // 回写缓存：评级 + 类型 + 公司
+  if (data.length > 0) {
+    const r = data[0];
+    await saveRatingInfo(fundCode, {
+      rating_shanghai: r.上海证券,
+      rating_merchants: r.招商证券,
+      rating_jian: r.济安金信,
+    });
+    // 同时写入类型和公司（rating 数据里有）
+    await saveFundInfo(fundCode, {
+      fund_name: r.简称,
+      fund_type: r.类型,
+      fund_company: r.基金公司,
+    });
+  }
+
   return data;
 }
 

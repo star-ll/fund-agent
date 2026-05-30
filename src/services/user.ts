@@ -1,4 +1,5 @@
 import { db } from './db';
+import { runMigrations } from './migrations';
 import type { UserProfile, Holding } from './storage';
 
 // 根据企微 user_id 查询或创建用户
@@ -53,6 +54,7 @@ export async function loadProfileFromDB(weworkUserId: string): Promise<UserProfi
 }
 
 export async function loadSummaryFromDB(weworkUserId: string): Promise<string | null> {
+  await runMigrations();
   const [rows] = await db.execute<any[]>(
     'SELECT conversation_summary FROM users WHERE wework_user_id = ?',
     [weworkUserId],
@@ -61,6 +63,7 @@ export async function loadSummaryFromDB(weworkUserId: string): Promise<string | 
 }
 
 export async function saveSummaryToDB(weworkUserId: string, summary: string): Promise<void> {
+  await runMigrations();
   await db.execute(
     'UPDATE users SET conversation_summary = ? WHERE wework_user_id = ?',
     [summary, weworkUserId],

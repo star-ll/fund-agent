@@ -21,12 +21,12 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Migration: run this on existing databases
--- ALTER TABLE users
---   ADD COLUMN investment_goal       VARCHAR(128) DEFAULT NULL AFTER max_loss_tolerance,
---   ADD COLUMN preferred_fund_types  JSON         DEFAULT NULL AFTER investment_goal,
---   ADD COLUMN monthly_investment    VARCHAR(64)  DEFAULT NULL AFTER preferred_fund_types,
---   ADD COLUMN portfolio_scale       VARCHAR(64)  DEFAULT NULL AFTER monthly_investment;
--- ALTER TABLE users ADD COLUMN conversation_summary TEXT DEFAULT NULL AFTER notes;
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS investment_goal       VARCHAR(128) DEFAULT NULL AFTER max_loss_tolerance,
+  ADD COLUMN IF NOT EXISTS preferred_fund_types  JSON         DEFAULT NULL AFTER investment_goal,
+  ADD COLUMN IF NOT EXISTS monthly_investment    VARCHAR(64)  DEFAULT NULL AFTER preferred_fund_types,
+  ADD COLUMN IF NOT EXISTS portfolio_scale       VARCHAR(64)  DEFAULT NULL AFTER monthly_investment;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS conversation_summary TEXT DEFAULT NULL AFTER notes;
 
 CREATE TABLE IF NOT EXISTS holdings (
   id         INT UNSIGNED NOT NULL AUTO_INCREMENT,

@@ -336,6 +336,35 @@ const webSearchTool: OpenAI.Chat.ChatCompletionTool = {
   },
 };
 
+// 本地基金知识库搜索：优先查询本地数据库，命中则无需调 API
+const searchFundCacheTool: OpenAI.Chat.ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'search_fund_cache',
+    description:
+      '搜索本地基金知识库，按类型、公司、关键词查找已缓存的基金。适用于查找"有哪些债券型基金"、"某公司旗下的基金"等需要筛选基金的场景。优先使用此工具，比逐个调用 get_fund_info 更高效。',
+    parameters: {
+      type: 'object',
+      properties: {
+        category_l1: {
+          type: 'string',
+          enum: ['股票型', '混合型', '债券型', '指数型', 'QDII', 'FOF', '货币型', '其他'],
+          description: '一级基金分类',
+        },
+        category_l2: {
+          type: 'string',
+          description: '二级分类，如 偏股混合、纯债、灵活配置、指数增强等',
+        },
+        fund_company: { type: 'string', description: '基金公司名称' },
+        keyword: { type: 'string', description: '搜索关键词，匹配基金名称或代码' },
+        limit: { type: 'number', description: '返回数量上限，默认 20，最大 50' },
+      },
+    },
+  },
+};
+
+baseTools.push(searchFundCacheTool);
+
 if(config.search.baseURL) {
   baseTools.push(webSearchTool)
 }
