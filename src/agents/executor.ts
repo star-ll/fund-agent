@@ -265,8 +265,8 @@ export async function runAgent(
 
   const callLog: string[] = [];
   let webSearchCount = 0;
-  const WEB_SEARCH_LIMIT = 5;
-  const LOOP_LIMIT = 15;
+  const WEB_SEARCH_LIMIT = 20;
+  const LOOP_LIMIT = 30;
 
   const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
 
