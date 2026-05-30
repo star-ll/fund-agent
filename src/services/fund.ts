@@ -80,9 +80,32 @@ export interface FundHoldDetail {
 }
 
 export async function getFundInfo(fundCode: string): Promise<FundInfo> {
+  // 先查缓存：如果已有基本名称，直接返回（无需调 API）
+  const cached = await getFundCache(fundCode);
+  if (cached?.fund_name) {
+    return {
+      基金代码: fundCode,
+      基金简称: cached.fund_name,
+      类型: cached.fund_type_raw ?? '',
+      日期: '',
+      单位净值: '',
+      累计净值: '',
+      日增长率: '',
+    };
+  }
+
   const { data } = await akshareClient.get<FundInfo>('/fund/info', {
     params: { fund_code: fundCode },
   });
+
+  // 回写缓存：基金名称（类型由 rating/manager 补充）
+  if (data.基金简称) {
+    saveFundInfo(fundCode, {
+      fund_name: data.基金简称,
+      fund_type: (data as any).类型, // fund_open_fund_daily_em 可能不含此字段
+    }).catch(() => {}); // 非关键路径，不阻塞返回
+  }
+
   return data;
 }
 

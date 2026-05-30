@@ -70,6 +70,10 @@ export async function dispatchTool(
       const [achievement, analysis] = await Promise.all([
         getFundAchievement(args.fund_code as string),
         getFundAnalysis(args.fund_code as string),
+        // 并行拉取基本信息写入缓存（fire-and-forget，不阻塞）
+        (async () => {
+          try { await getFundInfo(args.fund_code as string); } catch {}
+        })(),
       ]);
       return { callMessage: getToolLabel(name, args), data: { achievement, analysis } };
     }
