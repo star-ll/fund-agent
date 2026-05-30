@@ -53,7 +53,12 @@ def _get_cached(key: str) -> pd.DataFrame | None:
 
 
 def _set_cached(key: str, df: pd.DataFrame, ttl: int = 3600) -> None:
-    _redis.setex(key, ttl, json.dumps(df.to_dict(orient="records"), ensure_ascii=False))
+    records = df.to_dict(orient="records")
+    for row in records:
+        for k, v in row.items():
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                row[k] = None
+    _redis.setex(key, ttl, json.dumps(records, ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------
@@ -83,13 +88,14 @@ def _to_json(df: pd.DataFrame) -> list[dict]:
     for col in df.columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             df[col] = df[col].dt.strftime("%Y-%m-%d")
-        else:
-            df[col] = df[col].astype(str)
+    # 先处理 NaN/Inf（在 astype(str) 之前，否则浮点数已变成字符串）
     records = df.to_dict(orient="records")
     for row in records:
         for k, v in row.items():
             if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
                 row[k] = None
+            else:
+                row[k] = str(v) if not isinstance(v, str) else v
     return records
 
 
