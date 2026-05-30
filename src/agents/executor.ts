@@ -197,6 +197,8 @@ export async function runAgent(
   const WEB_SEARCH_LIMIT = 5;
   const LOOP_LIMIT = 15;
 
+  const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+
   for (let i = 0; i < LOOP_LIMIT; i++) {
     logger.info(tag, `第 ${i + 1} 轮思考`);
 
@@ -258,22 +260,33 @@ export async function runAgent(
     const toolResults = await Promise.all(
       prepared.map(async ({ tc, args, skipContent }) => {
         if (skipContent) {
-          return { tool_call_id: tc.id, callMessage: null as string | null, data: skipContent };
+          return { tool_call_id: tc.id, callLogLine: `> ⏭ ${getToolLabel(tc.function.name, args)} - 已达上限`, data: skipContent };
         }
+        const t0 = Date.now();
         try {
           const dispatched = await dispatchTool(tc.function.name, args, userId);
+          const elapsed = Date.now() - t0;
           logger.debug(tag, `工具返回: ${tc.function.name}`, JSON.stringify(dispatched.data).slice(0, 200));
-          return { tool_call_id: tc.id, callMessage: dispatched.callMessage, data: dispatched.data };
+          return {
+            tool_call_id: tc.id,
+            callLogLine: `> 🔧 ${dispatched.callMessage}（${formatDuration(elapsed)}）`,
+            data: dispatched.data,
+          };
         } catch (err) {
+          const elapsed = Date.now() - t0;
           const msg = err instanceof Error ? err.message : String(err);
           logger.error(tag, `工具异常: ${tc.function.name}`, msg);
-          return { tool_call_id: tc.id, callMessage: null as string | null, data: { error: `工具 ${tc.function.name} 调用失败：${msg}，请基于已有信息作答。` } };
+          return {
+            tool_call_id: tc.id,
+            callLogLine: `> ⚠ ${getToolLabel(tc.function.name, args)} - ${msg}（${formatDuration(elapsed)}）`,
+            data: { error: `工具 ${tc.function.name} 调用失败：${msg}，请基于已有信息作答。` },
+          };
         }
       }),
     );
 
-    for (const { tool_call_id, callMessage, data } of toolResults) {
-      if (callMessage) callLog.push(`> ${callMessage}`);
+    for (const { tool_call_id, callLogLine, data } of toolResults) {
+      callLog.push(callLogLine);
       messages.push({ role: 'tool', tool_call_id, content: JSON.stringify(data) });
     }
   }
