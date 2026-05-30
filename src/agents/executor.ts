@@ -80,6 +80,74 @@ function trimContext(messages: Message[]): Message[] {
   return messages;
 }
 
+// ---------------------------------------------------------------------------
+// 流式 LLM 调用：支持文本 token 逐块输出，同时正确解析 tool_calls
+// ---------------------------------------------------------------------------
+interface StreamResult {
+  content: string;
+  tool_calls?: OpenAI.Chat.ChatCompletionMessageToolCall[];
+  finish_reason: string;
+}
+
+async function streamChatCompletion(
+  messages: Message[],
+  onStream?: (chunk: string) => void,
+): Promise<StreamResult> {
+  const stream = await client.chat.completions.create({
+    model: config.llm.model,
+    messages,
+    tools,
+    stream: true,
+  });
+
+  let content = '';
+  const toolCallsMap = new Map<number, {
+    id: string;
+    function: { name: string; arguments: string };
+  }>();
+  let finishReason = '';
+
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta;
+    if (!delta) continue;
+
+    // 文本内容 → 逐块回调
+    if (delta.content) {
+      content += delta.content;
+      onStream?.(delta.content);
+    }
+
+    // 工具调用 → 累积拼接（streaming 中 name/arguments 分多段到达）
+    if (delta.tool_calls) {
+      for (const tc of delta.tool_calls) {
+        const idx = tc.index;
+        if (!toolCallsMap.has(idx)) {
+          toolCallsMap.set(idx, { id: tc.id ?? '', function: { name: '', arguments: '' } });
+        }
+        const entry = toolCallsMap.get(idx)!;
+        if (tc.id) entry.id = tc.id;
+        if (tc.function?.name) entry.function.name += tc.function.name;
+        if (tc.function?.arguments) entry.function.arguments += tc.function.arguments;
+      }
+    }
+
+    if (chunk.choices[0]?.finish_reason) {
+      finishReason = chunk.choices[0].finish_reason;
+    }
+  }
+
+  const tool_calls = toolCallsMap.size > 0
+    ? Array.from(toolCallsMap.values()).map((tc, i) => ({
+        id: tc.id,
+        type: 'function' as const,
+        function: tc.function,
+        index: i,
+      }))
+    : undefined;
+
+  return { content, tool_calls, finish_reason: finishReason };
+}
+
 function formatProfileForPrompt(profile: UserProfile): string {
   const lines: string[] = ['## 当前用户档案'];
 
@@ -121,6 +189,8 @@ async function buildSystemPrompt(systemPrompt?: string, userId?: string): Promis
 export interface RunAgentOptions {
   history?: Message[];
   onProgress?: (label: string) => void;
+  /** 流式回调：每收到一个 token 文本就调用一次，用于渐进式 UI 更新 */
+  onStream?: (chunk: string) => void;
   systemPrompt?: string;
   // webhook 模式传入 userId，使用 MySQL；CLI 模式不传，使用本地文件
   userId?: string;
@@ -173,6 +243,7 @@ export async function runAgent(
     history = [],
     userId,
     onProgress: progressCb,
+    onStream,
     systemPrompt: historySystemPrompt,
     onClearHistory,
   } = options;
@@ -213,34 +284,37 @@ export async function runAgent(
 
     progressCb?.('思考中…');
 
-    // LLM 推理
-    let response: OpenAI.Chat.ChatCompletion;
+    // 流式 LLM 推理
+    let result: StreamResult;
     try {
-      response = await client.chat.completions.create({
-        model: config.llm.model,
-        messages,
-        tools,
-      });
+      result = await streamChatCompletion(messages, onStream);
     } catch (err) {
       logger.error(tag, 'LLM 调用失败', err instanceof Error ? err.message : String(err));
       throw err;
     }
 
-    const choice = response.choices[0];
-    messages.push(choice.message);
+    // 构建 assistant 消息加入历史（流式模式下需要手动拼接）
+    const assistantMsg: Message = {
+      role: 'assistant',
+      content: result.content || null,
+    };
+    if (result.tool_calls) {
+      (assistantMsg as any).tool_calls = result.tool_calls;
+    }
+    messages.push(assistantMsg);
 
-    // 非工具调用 => 结束
-    if (choice.finish_reason !== 'tool_calls' || !choice.message.tool_calls) {
-      const reply = choice.message.content ?? '';
+    // 非工具调用 => 结束，返回流式累积的内容
+    if (result.finish_reason !== 'tool_calls' || !result.tool_calls) {
+      const reply = result.content;
       logger.info(tag, '回答完成', reply.slice(0, 200) + (reply.length > 200 ? '…' : ''));
       return callLog.length ? `${callLog.join('\n')}\n\n${reply}` : reply;
     }
 
     // 工具调用
-    logger.info(tag, `本轮工具调用数: ${choice.message.tool_calls.length}`);
+    logger.info(tag, `本轮工具调用数: ${result.tool_calls.length}`);
 
     // 顺序预处理：限流检查、日志、进度回调（保证 webSearchCount 计数准确）
-    const prepared = choice.message.tool_calls.map((tc) => {
+    const prepared = result.tool_calls.map((tc) => {
       const args = JSON.parse(tc.function.arguments);
       logger.info(tag, `工具调用: ${tc.function.name}`, args);
       progressCb?.(getToolLabel(tc.function.name, args));

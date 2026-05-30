@@ -37,14 +37,27 @@ export function startGateway(): void {
       .trim();
 
     if (!question) {
-      await message.reply('请在 @ 我的同时输入你的问题，例如：@基金助手 000001基金怎么样');
+      const thread = await message.startThread({
+        name: '基金分析',
+        autoArchiveDuration: 1440,
+      });
+      await thread.send('请在 @ 我的同时输入你的问题，例如：@基金助手 000001基金怎么样');
       return;
     }
 
     logger.info('gateway', `收到 @mention`, { userId, question });
 
-    // 先发一条占位消息，后续通过 edit 更新进度
-    const reply = await message.reply('⏳ 思考中…');
+    // 创建子区（thread），后续所有回复都在子区内进行
+    const threadName = question.length > 80 ? question.slice(0, 77) + '...' : question;
+    const thread = await message.startThread({
+      name: threadName || '基金分析',
+      autoArchiveDuration: 1440, // 24 小时
+    });
+
+    logger.info('gateway', `已创建子区: ${thread.name}`, { userId });
+
+    // 在子区内发一条占位消息，后续通过 edit 更新进度
+    const reply = await thread.send('⏳ 思考中…');
 
     try {
       const [history, profile] = await Promise.all([
@@ -64,12 +77,26 @@ export function startGateway(): void {
 
       let historyCleared = false;
       const progressPromises: Promise<unknown>[] = [];
+
+      // 流式累积文本 + 节流编辑，实现「打字机」效果
+      let streamedContent = '';
+      let lastStreamEdit = 0;
+      const STREAM_THROTTLE_MS = 300;
+
       const answer = await runAgent(question, {
         history: effectiveHistory,
         userId,
         systemPrompt,
         onProgress: (label) => {
           progressPromises.push(reply.edit(`⏳ ${label}`).catch(() => {}));
+        },
+        onStream: (chunk) => {
+          streamedContent += chunk;
+          const now = Date.now();
+          if (now - lastStreamEdit >= STREAM_THROTTLE_MS) {
+            lastStreamEdit = now;
+            progressPromises.push(reply.edit(streamedContent).catch(() => {}));
+          }
         },
         onClearHistory: async () => {
           await clearHistory(userId);
@@ -88,12 +115,12 @@ export function startGateway(): void {
         await setHistory(userId, newHistory);
       }
 
-      const chunks = splitMessage(convertTables(answer));
+      // 最终编辑：确保完整内容都显示（convertTables 格式化 + 分段）
+      const formatted = convertTables(answer);
+      const chunks = splitMessage(formatted);
       await reply.edit(chunks[0]);
-      if ('send' in message.channel) {
-        for (let i = 1; i < chunks.length; i++) {
-          await message.channel.send(chunks[i]);
-        }
+      for (let i = 1; i < chunks.length; i++) {
+        await thread.send(chunks[i]);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
