@@ -44,11 +44,10 @@ const migrator = new Umzug({
   },
 });
 
-let _applied = false;
+let _attempted = false;
 
 export async function runMigrations(): Promise<void> {
-  if (_applied) return;
-  _applied = true;
+  if (_attempted) return;
 
   try {
     const pending = await migrator.pending();
@@ -59,7 +58,10 @@ export async function runMigrations(): Promise<void> {
     } else {
       logger.info('migration', '无待执行迁移');
     }
+    _attempted = true;
   } catch (err) {
-    logger.error('migration', '迁移执行失败', err instanceof Error ? err.message : String(err));
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('migration', `迁移执行失败（下次请求重试）: ${msg}`);
+    console.error(`[migration] 迁移执行失败: ${msg}`);
   }
 }
