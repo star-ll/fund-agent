@@ -263,3 +263,34 @@ Agent 可调用以下工具，定义在 `src/tools/index.ts`：
 - **.env 加载**: Python 从 `../.env` 加载，Node.js 从项目根 `.env` 加载；Docker 中通过 env_file 注入，不需要手动 load_dotenv
 - **上下文溢出防护**: agent 循环每轮自动 `estimateTokens()` 估算上下文，超过 85 万 token 时触发 `trimContext()`，裁剪最旧的 tool 结果（数组保留前 5 条，长字段截断到 300 字符）。日志输出裁剪前后 token 数
 - **数据库自动迁移**: `src/services/migrations.ts` 的 `runMigrations()` 在首次读写 `conversation_summary` 时自动执行。迁移状态记录在 `_migrations` 表中，umzug 管理版本追踪和回滚
+- **全球指数数据源**: 主源 yfinance（美股+港股+日股+欧股），回退源 AKShare（东方财富）。yfinance 需要网络通畅，数据延迟 15-20 分钟。
+- **黄金ETF 首次调用慢**: `ak.fund_etf_spot_em()` 需下载全量约 1500 只 ETF（约 40s），之后筛选黄金类。后续可考虑在 agent 层面缓存或定时预热。
+
+## 已知问题
+
+| 问题 | 影响 | 原因 | 计划 |
+|---|---|---|---|
+| TypeScript 编译报 umzug 错误 | 本地 `npm run build` 失败，Docker 构建正常 | `umzug` 模块未安装（仅在 Docker 中通过 pnpm 安装） | 低优先级，不影响部署 |
+| `/fund/achievement` 500 | 雪球业绩数据不可用 | AKShare 雪球 API 上游问题 | 等 AKShare 升级后恢复 |
+| 全球指数无实时数据 | yfinance 延迟 15-20 分钟 | Yahoo Finance 免费 API 限制 | 可接受，非交易场景够用 |
+| `_to_json` 对 object-dtype Timestamp 需特殊处理 | 含时间戳列的 DataFrame 序列化失败 | pandas DataFrame 中混合类型列 | 已修复 `server/main.py:86-98`，新增 object-dtype Timestamp 检测 |
+
+## 未来计划
+
+### 短期（1-2 周）
+- [ ] **定时预热黄金ETF缓存**: cron job 每天 8:50 调用 gold_etf 端点，确保盘中查询秒回
+- [ ] **全球指数缓存**: 对 global_index 加 Redis 缓存（TTL 5min），避免每次 LLM 调用都请求 yfinance
+- [ ] **修复 TypeScript 本地编译**: 安装 umzug 到 devDependencies 或调整 tsconfig 排除 migrations 目录
+
+### 中期（1 个月）
+- [ ] **再平衡定时提醒**: cron job 每周一检查用户持仓偏离度，自动推送 Discord
+- [ ] **`set_financial_goal` 端到端验证**: 在 Discord 中测试目标设定→配置方案→再平衡全流程
+- [ ] **`check_rebalance` 资产分类自动推断**: agent 根据基金类型字段自动归类为 stock/bond/QDII/gold，减少用户手动指定 asset_class
+- [ ] **多目标支持**: 用户可出现多个财务目标（如"买房首付"+"子女教育"），各自独立配置
+
+### 长期（3+ 个月）
+- [ ] **收益跟踪**: 记录用户持仓净值历史，展示组合累计收益曲线
+- [ ] **智能定投**: 根据市场估值（PE/PB 分位数）动态调整定投金额
+- [ ] **税务优化提示**: 提醒持有满 1 年享受免税、利用养老金账户等
+- [ ] **多用户支持**: 一个 Discord 服务器内多用户各自独立档案和目标
+

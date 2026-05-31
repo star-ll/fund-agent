@@ -88,6 +88,11 @@ def _to_json(df: pd.DataFrame) -> list[dict]:
     for col in df.columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             df[col] = df[col].dt.strftime("%Y-%m-%d")
+        # 处理 object dtype 中的 Timestamp 对象
+        elif df[col].dtype == object:
+            mask = df[col].apply(lambda x: isinstance(x, pd.Timestamp))
+            if mask.any():
+                df.loc[mask, col] = df.loc[mask, col].apply(lambda x: x.strftime("%Y-%m-%d %H:%M:%S"))
     # 先处理 NaN/Inf（在 astype(str) 之前，否则浮点数已变成字符串）
     records = df.to_dict(orient="records")
     for row in records:
@@ -279,6 +284,94 @@ async def market_northbound():
         if df.empty:
             return []
         return _to_json(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 全球指数（AKShare：标普500、纳斯达克、恒生、日经等）
+# ---------------------------------------------------------------------------
+
+@app.get("/market/global_index")
+async def market_global_index():
+    """获取全球主要指数最新行情（标普500、纳斯达克、恒生、日经等）。"""
+    results = []
+
+    # 主数据源：yfinance（覆盖美股+港股+日股+欧股）
+    try:
+        import yfinance as yf
+        symbols = {
+            "标普500": "^GSPC",
+            "纳斯达克": "^IXIC",
+            "道琼斯": "^DJI",
+            "恒生指数": "^HSI",
+            "日经225": "^N225",
+            "英国富时100": "^FTSE",
+            "德国DAX": "^GDAXI",
+            "法CAC40": "^FCHI",
+        }
+        # 批量下载当日数据
+        tickers = yf.Tickers(" ".join(symbols.values()))
+        for name, sym in symbols.items():
+            try:
+                t = tickers.tickers.get(sym)
+                if t is None:
+                    continue
+                info = t.fast_info if hasattr(t, 'fast_info') else t.info
+                hist = t.history(period="2d")
+                if hist.empty:
+                    continue
+                current = hist["Close"].iloc[-1]
+                prev = hist["Close"].iloc[-2] if len(hist) > 1 else current
+                change_pct = ((current - prev) / prev * 100) if prev != 0 else 0
+                results.append({
+                    "名称": name,
+                    "最新价": str(round(float(current), 2)),
+                    "涨跌幅": f"{change_pct:+.2f}%",
+                    "日期": str(hist.index[-1].date()),
+                })
+            except Exception:
+                pass
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    # 如果 yfinance 无结果，回退到 akshare 东方财富
+    if not results:
+        try:
+            df = await _run(ak.index_global_spot_em)
+            if not df.empty:
+                for _, row in df.iterrows():
+                    results.append({
+                        "名称": str(row.get("名称", "")),
+                        "最新价": str(row.get("最新价", "")),
+                        "涨跌幅": str(row.get("涨跌幅", "")),
+                    })
+        except Exception:
+            pass
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# 黄金 ETF（AKShare：国内黄金 ETF 行情）
+# ---------------------------------------------------------------------------
+
+@app.get("/fund/gold_etf")
+async def fund_gold_etf():
+    """获取国内黄金 ETF 实时行情。"""
+    try:
+        df = await _run(ak.fund_etf_spot_em)
+        if df.empty:
+            return []
+        # 筛选出黄金类 ETF（名称含"金"或"黄金"）
+        mask = df["名称"].str.contains("金|黄金", na=False)
+        gold = df[mask]
+        if not gold.empty:
+            # 只返回关键字段（排除时间戳列避免序列化问题）
+            gold = gold[["代码", "名称", "最新价", "涨跌幅", "成交量", "成交额"]]
+        return _to_json(gold) if not gold.empty else _to_json(df.head(50))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

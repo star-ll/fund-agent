@@ -6,6 +6,8 @@ import { loadProfile, saveProfile } from '../services/storage';
 import { loadProfileFromDB, saveProfileToDB } from '../services/user';
 import { webSearch } from '../services/search';
 import { searchFundCache } from '../services/fund-cache';
+import { getGlobalIndex, getGoldETF } from '../services/global';
+import { computeAllocationPlan, checkRebalance } from '../services/allocation';
 
 export function getToolLabel(name: string, args: Record<string, unknown>): string {
   switch (name) {
@@ -39,6 +41,11 @@ export function getToolLabel(name: string, args: Record<string, unknown>): strin
       if (args.keyword) parts.push(String(args.keyword));
       return parts.length > 0 ? `正在查找基金: ${parts.join(' / ')}` : '正在查找基金';
     }
+    case 'get_allocation_plan':       return '正在计算资产配置方案…';
+    case 'check_rebalance':           return '正在检查再平衡偏离度…';
+    case 'get_global_index':          return '正在获取全球指数行情';
+    case 'get_gold_etf':              return '正在获取黄金ETF行情';
+    case 'set_financial_goal':        return `正在保存财务目标: ${args.goal_name}`;
     default:                           return `${name}…`;
   }
 }
@@ -148,6 +155,50 @@ export async function dispatchTool(
           fund_company: args.fund_company as string | undefined,
           keyword: args.keyword as string | undefined,
           limit: args.limit as number | undefined,
+        }),
+      };
+
+    case 'get_allocation_plan': {
+      const plan = computeAllocationPlan({
+        monthlyInvestment: args.monthly_investment as number,
+        targetAmount: args.target_amount as number,
+        yearsToTarget: args.years_to_target as number,
+        riskLevel: args.risk_level as 'low' | 'medium' | 'high',
+      });
+      return { callMessage: getToolLabel(name, args), data: plan };
+    }
+
+    case 'check_rebalance': {
+      const holdings = args.holdings as Array<{ fund_code: string; market_value: number; asset_class: string }>;
+      const targets = args.targets as Array<{ assetClass: string; targetRatio: number }>;
+      const result = checkRebalance(
+        holdings.map(h => ({ fundCode: h.fund_code, marketValue: h.market_value, assetClass: h.asset_class })),
+        targets,
+      );
+      return { callMessage: getToolLabel(name, args), data: result };
+    }
+
+    case 'get_global_index':
+      return { callMessage: getToolLabel(name, args), data: await getGlobalIndex() };
+
+    case 'get_gold_etf':
+      return { callMessage: getToolLabel(name, args), data: await getGoldETF() };
+
+    case 'set_financial_goal':
+      if (userId) {
+        return {
+          callMessage: getToolLabel(name, args),
+          data: await saveProfileToDB(userId, {
+            investment_goal: `${args.goal_name}: ${args.target_amount}元 / ${args.years_to_target}年`,
+            monthly_investment: `${args.monthly_investment}元/月`,
+          }),
+        };
+      }
+      return {
+        callMessage: getToolLabel(name, args),
+        data: saveProfile({
+          investment_goal: `${args.goal_name}: ${args.target_amount}元 / ${args.years_to_target}年`,
+          monthly_investment: `${args.monthly_investment}元/月`,
         }),
       };
 

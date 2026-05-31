@@ -365,6 +365,106 @@ const searchFundCacheTool: OpenAI.Chat.ChatCompletionTool = {
 
 baseTools.push(searchFundCacheTool);
 
+// ---------------------------------------------------------------------------
+// 资产配置 & 再平衡 & 全球市场 & 财务目标
+// ---------------------------------------------------------------------------
+const allocationTools: OpenAI.Chat.ChatCompletionTool[] = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_allocation_plan',
+      description: '根据用户的财务目标（月投入、目标金额、期限）和风险偏好，计算建议的资产配置比例。适用于用户提出"我想达到XX目标"、"每月定投XX元想X年达到XX万"等目标导向问题时调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          monthly_investment: { type: 'number', description: '月投入金额（元）' },
+          target_amount: { type: 'number', description: '目标金额（元）' },
+          years_to_target: { type: 'number', description: '距离目标年数' },
+          risk_level: { type: 'string', enum: ['low', 'medium', 'high'], description: '用户风险偏好' },
+        },
+        required: ['monthly_investment', 'target_amount', 'years_to_target', 'risk_level'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'check_rebalance',
+      description: '检查当前持仓与目标资产配置的偏离度，输出哪些资产需要增持或减持。当用户询问"我的配置是否合理"、"是否需要调仓"时调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          holdings: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                fund_code: { type: 'string', description: '基金代码' },
+                market_value: { type: 'number', description: '当前市值（元）' },
+                asset_class: { type: 'string', description: '资产大类：股票型基金、混合型基金、债券型基金、QDII、黄金ETF、货币基金' },
+              },
+              required: ['fund_code', 'market_value', 'asset_class'],
+            },
+          },
+          targets: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                assetClass: { type: 'string' },
+                targetRatio: { type: 'number' },
+              },
+              required: ['assetClass', 'targetRatio'],
+            },
+          },
+        },
+        required: ['holdings', 'targets'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_global_index',
+      description: '获取全球主要指数最新行情，包括标普500、纳斯达克、恒生指数、日经225等。适用于判断海外市场趋势、QDII投资时机。',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_gold_etf',
+      description: '获取国内黄金ETF实时行情。适用于考虑黄金作为避险资产配置时调用。',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'set_financial_goal',
+      description: '保存或更新用户的财务目标。当用户提出"我想X年攒到XX万"、"我的目标是XX"等目标设定时调用。目标会持久化到用户档案中。',
+      parameters: {
+        type: 'object',
+        properties: {
+          goal_name: { type: 'string', description: '目标名称，如"买房首付"、"子女教育"、"退休储备"' },
+          target_amount: { type: 'number', description: '目标金额（元）' },
+          years_to_target: { type: 'number', description: '期望达成年数' },
+          monthly_investment: { type: 'number', description: '计划月投入（元）' },
+        },
+        required: ['goal_name', 'target_amount', 'years_to_target', 'monthly_investment'],
+      },
+    },
+  },
+];
+
+baseTools.push(...allocationTools);
+
 if(config.search.baseURL) {
   baseTools.push(webSearchTool)
 }
