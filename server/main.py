@@ -430,6 +430,8 @@ async def fund_achievement(fund_code: str = Query(..., description="基金代码
             return []
         _set_cached(cache_key, df, _TTL["fund_nav"])
         return _to_json(df)
+    except KeyError:
+        return []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -450,6 +452,8 @@ async def fund_analysis(fund_code: str = Query(..., description="基金代码"))
             return []
         _set_cached(cache_key, df, _TTL["fund_nav"])
         return _to_json(df)
+    except KeyError:
+        return []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -470,6 +474,8 @@ async def fund_profit_probability(fund_code: str = Query(..., description="基�
             return []
         _set_cached(cache_key, df, _TTL["fund_nav"])
         return _to_json(df)
+    except KeyError:
+        return []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
