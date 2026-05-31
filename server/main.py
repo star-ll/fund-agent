@@ -83,6 +83,21 @@ async def _cached_run(key: str, ttl_key: str, fn, *args, **kwargs) -> pd.DataFra
 # 工具函数
 # ---------------------------------------------------------------------------
 
+def _sanitize_value(v):
+    """将单个值转为 JSON 可序列化形式（None 或 str）。"""
+    if v is None:
+        return None
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return None
+    # pd.isna 能捕获 np.nan、pd.NaT、pd.NA 等 non-float 缺失值
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return str(v) if not isinstance(v, str) else v
+
+
 def _to_json(df: pd.DataFrame) -> list[dict]:
     df = df.copy()
     for col in df.columns:
@@ -93,14 +108,10 @@ def _to_json(df: pd.DataFrame) -> list[dict]:
             mask = df[col].apply(lambda x: isinstance(x, pd.Timestamp))
             if mask.any():
                 df.loc[mask, col] = df.loc[mask, col].apply(lambda x: x.strftime("%Y-%m-%d %H:%M:%S"))
-    # 先处理 NaN/Inf（在 astype(str) 之前，否则浮点数已变成字符串）
     records = df.to_dict(orient="records")
     for row in records:
         for k, v in row.items():
-            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                row[k] = None
-            else:
-                row[k] = str(v) if not isinstance(v, str) else v
+            row[k] = _sanitize_value(v)
     return records
 
 
@@ -413,7 +424,7 @@ async def fund_achievement(fund_code: str = Query(..., description="基金代码
         cache_key = f"fund_achievement_{fund_code}"
         cached = _get_cached(cache_key)
         if cached is not None:
-            return cached.to_dict(orient="records")
+            return _to_json(cached)
         df = await _run(ak.fund_individual_achievement_xq, symbol=fund_code)
         if df.empty:
             return []
@@ -433,7 +444,7 @@ async def fund_analysis(fund_code: str = Query(..., description="基金代码"))
         cache_key = f"fund_analysis_{fund_code}"
         cached = _get_cached(cache_key)
         if cached is not None:
-            return cached.to_dict(orient="records")
+            return _to_json(cached)
         df = await _run(ak.fund_individual_analysis_xq, symbol=fund_code)
         if df.empty:
             return []
@@ -453,7 +464,7 @@ async def fund_profit_probability(fund_code: str = Query(..., description="基�
         cache_key = f"fund_profit_prob_{fund_code}"
         cached = _get_cached(cache_key)
         if cached is not None:
-            return cached.to_dict(orient="records")
+            return _to_json(cached)
         df = await _run(ak.fund_individual_profit_probability_xq, symbol=fund_code)
         if df.empty:
             return []
