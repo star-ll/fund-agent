@@ -465,6 +465,73 @@ const allocationTools: OpenAI.Chat.ChatCompletionTool[] = [
 
 baseTools.push(...allocationTools);
 
+// ---------------------------------------------------------------------------
+// 净值预警
+// ---------------------------------------------------------------------------
+const alertTools: OpenAI.Chat.ChatCompletionTool[] = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'set_price_alert',
+      description:
+        '为基金设置净值预警。当基金净值涨破或跌破目标价位时提醒用户。适用于用户说"帮我盯着"、"XX基金跌到X元提醒我"、"净值到X就告诉我"等场景。',
+      parameters: {
+        type: 'object',
+        properties: {
+          fund_code: { type: 'string', description: '基金代码，例如 000001' },
+          direction: {
+            type: 'string',
+            enum: ['above', 'below'],
+            description: 'above=涨破提醒, below=跌破提醒',
+          },
+          target_nav: { type: 'number', description: '目标净值' },
+          note: { type: 'string', description: '备注（可选），如"抄底位置"' },
+        },
+        required: ['fund_code', 'direction', 'target_nav'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_price_alerts',
+      description: '查看用户已设置的所有净值预警，包括已触发和未触发的。',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'check_price_alerts',
+      description:
+        '检查所有活跃预警是否触发。会获取基金最新净值并与目标价位比较，返回触发结果。适用于用户问"我的预警到了吗"、"检查下有没有触发的"时调用。',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'delete_price_alert',
+      description: '删除指定预警。当用户说"取消预警"、"不用盯这只了"时调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          alert_id: { type: 'number', description: '预警ID，从 get_price_alerts 获取' },
+        },
+        required: ['alert_id'],
+      },
+    },
+  },
+];
+
+baseTools.push(...alertTools);
+
 if(config.search.baseURL) {
   baseTools.push(webSearchTool)
 }

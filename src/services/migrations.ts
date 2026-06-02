@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { addConversationSummary } from '../../migrations/001_add_conversation_summary';
 import { fundCache } from '../../migrations/002_fund_cache';
 import { addFinancialGoalColumns } from '../../migrations/003_add_financial_goal_columns';
+import { addPriceAlerts } from '../../migrations/004_price_alerts';
 
 // ---------------------------------------------------------------------------
 // 自定义 MySQL 存储：用 _migrations 表记录已执行的迁移
@@ -34,7 +35,7 @@ const mysqlStorage = () => {
 };
 
 const migrator = new Umzug({
-  migrations: [addConversationSummary, fundCache, addFinancialGoalColumns],
+  migrations: [addConversationSummary, fundCache, addFinancialGoalColumns, addPriceAlerts],
   context: { db },
   storage: mysqlStorage(),
   logger: {

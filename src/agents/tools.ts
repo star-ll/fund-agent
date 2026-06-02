@@ -8,6 +8,7 @@ import { webSearch } from '../services/search';
 import { searchFundCache } from '../services/fund-cache';
 import { getGlobalIndex, getGoldETF } from '../services/global';
 import { computeAllocationPlan, checkRebalance } from '../services/allocation';
+import { createAlert, listAlerts, deleteAlert, checkAlerts } from '../services/alerts';
 
 export function getToolLabel(name: string, args: Record<string, unknown>): string {
   switch (name) {
@@ -46,6 +47,10 @@ export function getToolLabel(name: string, args: Record<string, unknown>): strin
     case 'get_global_index':          return '正在获取全球指数行情';
     case 'get_gold_etf':              return '正在获取黄金ETF行情';
     case 'set_financial_goal':        return `正在保存财务目标: ${args.goal_name}`;
+    case 'set_price_alert':           return `正在设置净值预警: ${args.fund_code} ${args.direction === 'above' ? '涨破' : '跌破'} ${args.target_nav}`;
+    case 'get_price_alerts':          return '正在查看净值预警列表';
+    case 'check_price_alerts':        return '正在检查预警触发情况…';
+    case 'delete_price_alert':        return `正在删除预警 #${args.alert_id}`;
     default:                           return `${name}…`;
   }
 }
@@ -201,6 +206,34 @@ export async function dispatchTool(
           monthly_investment: `${args.monthly_investment}元/月`,
         }),
       };
+
+    case 'set_price_alert': {
+      if (!userId) throw new Error('用户未登录');
+      return {
+        callMessage: getToolLabel(name, args),
+        data: await createAlert(userId, {
+          fund_code: args.fund_code as string,
+          direction: args.direction as 'above' | 'below',
+          target_nav: args.target_nav as number,
+          note: args.note as string | undefined,
+        }),
+      };
+    }
+
+    case 'get_price_alerts': {
+      if (!userId) throw new Error('用户未登录');
+      return { callMessage: getToolLabel(name, args), data: await listAlerts(userId) };
+    }
+
+    case 'check_price_alerts': {
+      if (!userId) throw new Error('用户未登录');
+      return { callMessage: getToolLabel(name, args), data: await checkAlerts(userId) };
+    }
+
+    case 'delete_price_alert': {
+      if (!userId) throw new Error('用户未登录');
+      return { callMessage: getToolLabel(name, args), data: await deleteAlert(userId, args.alert_id as number) };
+    }
 
     default:
       throw new Error(`Unknown tool: ${name}`);

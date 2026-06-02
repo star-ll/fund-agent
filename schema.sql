@@ -39,3 +39,18 @@ CREATE TABLE IF NOT EXISTS holdings (
   UNIQUE KEY uq_user_fund (user_id, fund_code),
   CONSTRAINT fk_holdings_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS price_alerts (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id       INT UNSIGNED NOT NULL,
+  fund_code     VARCHAR(20)   NOT NULL,
+  direction     ENUM('above','below') NOT NULL COMMENT 'above=涨破, below=跌破',
+  target_nav    DECIMAL(12,4) NOT NULL COMMENT '目标净值',
+  active        TINYINT(1)   NOT NULL DEFAULT 1,
+  triggered     TINYINT(1)   NOT NULL DEFAULT 0,
+  triggered_at  DATETIME      DEFAULT NULL,
+  note          VARCHAR(255)  DEFAULT NULL,
+  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_user_active (user_id, active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
