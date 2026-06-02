@@ -42,6 +42,7 @@ _TTL = {
     "fund_rank":     14400,
     "fund_nav":      14400,
     "fund_estimate":  900,
+    "market_index":   120,
 }
 
 
@@ -358,7 +359,7 @@ async def market_index(
     if symbol not in INDEX_TYPES:
         raise HTTPException(status_code=400, detail=f"symbol 必须为 {INDEX_TYPES} 之一")
     try:
-        df = await _run(ak.stock_zh_index_spot_em, symbol=symbol)
+        df = await _cached_run(f"market_index_{symbol}", "market_index", ak.stock_zh_index_spot_em, symbol=symbol)
         if df.empty:
             return []
         return _to_json(df)
