@@ -69,9 +69,28 @@ def _set_cached(key: str, df: pd.DataFrame, ttl: int = 3600) -> None:
 # akshare 调用统一走线程池（避免阻塞 asyncio 事件循环）
 # ---------------------------------------------------------------------------
 
+_RUN_RETRIES = 3
+_RUN_RETRY_DELAY_BASE = 2  # seconds, exponential backoff: 2s, 4s, 8s
+
+
 async def _run(fn, *args, **kwargs) -> pd.DataFrame:
+    """在线程池中调用 akshare，失败时自动重试（最多 3 次，指数退避）。"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
+    last_exc = None
+    for attempt in range(_RUN_RETRIES):
+        try:
+            return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
+        except Exception as e:
+            last_exc = e
+            if attempt < _RUN_RETRIES - 1:
+                delay = _RUN_RETRY_DELAY_BASE * (2 ** attempt)
+                fn_name = getattr(fn, "__name__", str(fn))
+                _log.warning(
+                    "_run attempt %d/%d for %s failed: %s, retrying in %ds",
+                    attempt + 1, _RUN_RETRIES, fn_name, str(e)[:200], delay,
+                )
+                await asyncio.sleep(delay)
+    raise last_exc
 
 
 async def _cached_run(key: str, ttl_key: str, fn, *args, **kwargs) -> pd.DataFrame:
