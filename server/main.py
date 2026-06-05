@@ -3,10 +3,13 @@ from typing import Optional
 import asyncio
 import io
 import json
+import logging
 import math
 import os
 import time
 from functools import partial
+
+_log = logging.getLogger("uvicorn.error")
 
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -351,20 +354,32 @@ async def fund_estimate(
 
 INDEX_TYPES = ["上证系列指数", "深证系列指数", "指数成份", "中证系列指数"]
 
+# 常用指数名称列表（LLM 可能直接传入的单个指数名），用于更友好的 400 提示
+COMMON_INDEX_NAMES = {
+    "上证指数", "深证成指", "创业板指", "科创50", "沪深300",
+    "中证500", "中证1000", "上证50", "中证红利", "北证50",
+    "国证2000", "恒生指数", "恒生科技",
+}
+
 
 @app.get("/market/index")
 async def market_index(
-    symbol: str = Query("上证系列指数", description=f"指数类型：{INDEX_TYPES}"),
+    symbol: str = Query("上证系列指数", description=f"指数名称或类型，例如：上证指数、沪深300、{INDEX_TYPES}"),
 ):
-    if symbol not in INDEX_TYPES:
-        raise HTTPException(status_code=400, detail=f"symbol 必须为 {INDEX_TYPES} 之一")
+    # 不再限制 symbol 只能是 4 个分类名；AKShare 的 stock_zh_index_spot_em
+    # 同时接受分类名和个股指数名。对于明确不支持的名称给出友好提示。
     try:
         df = await _cached_run(f"market_index_{symbol}", "market_index", ak.stock_zh_index_spot_em, symbol=symbol)
         if df.empty:
             return []
         return _to_json(df)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.exception("market_index(%s) failed", symbol)
+        # 如果是已知的无效指数名，返回 400 而非 500
+        err_msg = str(e).lower()
+        if "not found" in err_msg or "不存在" in err_msg or "empty" in err_msg:
+            raise HTTPException(status_code=400, detail=f"指数 '{symbol}' 无数据或名称无效")
+        raise HTTPException(status_code=500, detail=f"指数行情获取失败: {str(e)[:200]}")
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +498,7 @@ def _fetch_akshare_global() -> list[dict]:
 
 
 @app.get("/market/global_index")
+@app.get("/market/global")  # 别名兼容
 async def market_global_index():
     """获取全球主要指数最新行情（三级回退：yfinance → stooq → akshare）。"""
     symbols = {
