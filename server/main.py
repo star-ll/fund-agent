@@ -250,7 +250,8 @@ async def fund_info(fund_code: str = Query(..., description="基金代码，例�
                 return result
         except Exception:
             pass
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_info(%s) failed (data source unavailable): %s", fund_code, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +286,8 @@ async def fund_nav(
                 return nav_data
         except Exception:
             pass
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_nav(%s) failed (data source unavailable): %s", fund_code, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +309,8 @@ async def fund_manager(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_manager(%s) failed (data source unavailable): %s", fund_code, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +328,8 @@ async def fund_portfolio(
             return []
         return _to_json(df)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_portfolio(%s, %s) failed (data source unavailable): %s", fund_code, date, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +351,8 @@ async def fund_rank(
             return []
         return _to_json(df)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_rank(%s) failed (data source unavailable): %s", symbol, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +369,8 @@ async def fund_estimate(
             return []
         return _to_json(df)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_estimate(%s) failed (data source unavailable): %s", symbol, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +454,8 @@ async def market_northbound():
             return []
         return _to_json(df)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("market_northbound failed (data source unavailable): %s", str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -600,7 +607,8 @@ async def fund_gold_etf():
             gold = gold[["代码", "名称", "最新价", "涨跌幅", "成交量", "成交额"]]
         return _to_json(gold) if not gold.empty else _to_json(df.head(50))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_gold_etf failed (data source unavailable): %s", str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -627,7 +635,8 @@ async def market_sector(
             return []
         return _to_json(df)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("market_sector(%s) failed (data source unavailable): %s", symbol, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -714,7 +723,8 @@ async def fund_industry(
             return []
         return _to_json(df)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_industry(%s, %s) failed (data source unavailable): %s", fund_code, date, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -732,7 +742,8 @@ async def fund_bond_portfolio(
             return []
         return _to_json(df)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_bond_portfolio(%s, %s) failed (data source unavailable): %s", fund_code, date, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -750,7 +761,8 @@ async def fund_rating(fund_code: str = Query(..., description="基金代码")):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.warning("fund_rating(%s) failed (data source unavailable): %s", fund_code, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
