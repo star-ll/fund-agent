@@ -385,20 +385,55 @@ COMMON_INDEX_NAMES = {
 async def market_index(
     symbol: str = Query("上证系列指数", description=f"指数名称或类型，例如：上证指数、沪深300、{INDEX_TYPES}"),
 ):
-    # 不再限制 symbol 只能是 4 个分类名；AKShare 的 stock_zh_index_spot_em
-    # 同时接受分类名和个股指数名。对于明确不支持的名称给出友好提示。
+    # AKShare 的 stock_zh_index_spot_em 接受 4 个分类名（上证系列指数、深证系列指数、
+    # 指数成份、中证系列指数）作为 symbol，但不接受个股指数名。先尝试直接调用，
+    # 若失败则遍历所有分类查找匹配的指数。
     try:
         df = await _cached_run(f"market_index_{symbol}", "market_index", ak.stock_zh_index_spot_em, symbol=symbol)
         if df.empty:
             return []
         return _to_json(df)
+    except KeyError:
+        # symbol 不是合法分类名，遍历所有分类查找个股指数
+        _log.warning("market_index(%s) not a valid category, searching across all categories", symbol)
+        try:
+            combined_rows = []
+            for cat in INDEX_TYPES:
+                try:
+                    cat_df = await _cached_run(
+                        f"market_index_{cat}", "market_index", ak.stock_zh_index_spot_em, symbol=cat,
+                    )
+                    if not cat_df.empty:
+                        combined_rows.append(cat_df)
+                except Exception:
+                    pass
+            if combined_rows:
+                import pandas as pd
+                combined = pd.concat(combined_rows, ignore_index=True)
+                # 按名称精确匹配或代码匹配
+                mask = (
+                    combined["名称"].astype(str).str.fullmatch(symbol, na=False) |
+                    combined["代码"].astype(str).str.fullmatch(symbol, na=False)
+                )
+                matched = combined[mask]
+                if matched.empty:
+                    # 回退：模糊匹配（名称包含 symbol）
+                    mask2 = (
+                        combined["名称"].astype(str).str.contains(symbol, na=False) |
+                        combined["代码"].astype(str).str.contains(symbol, na=False)
+                    )
+                    matched = combined[mask2]
+                if not matched.empty:
+                    return _to_json(matched)
+                _log.warning("market_index(%s) not found in any category", symbol)
+        except Exception as e2:
+            _log.warning("market_index(%s) fallback search failed: %s", symbol, str(e2)[:200])
+        return []
     except Exception as e:
-        _log.exception("market_index(%s) failed", symbol)
-        # 如果是已知的无效指数名，返回 400 而非 500
-        err_msg = str(e).lower()
-        if "not found" in err_msg or "不存在" in err_msg or "empty" in err_msg:
-            raise HTTPException(status_code=400, detail=f"指数 '{symbol}' 无数据或名称无效")
-        raise HTTPException(status_code=500, detail=f"指数行情获取失败: {str(e)[:200]}")
+        # AKShare 数据源不稳定（如非交易日、上游限流），返回空数据而非 500
+        # 让 LLM agent 可以优雅处理（告知用户"当前无实时行情"）
+        _log.warning("market_index(%s) failed (data source unavailable): %s", symbol, str(e)[:200])
+        return []
 
 
 # ---------------------------------------------------------------------------
