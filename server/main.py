@@ -62,6 +62,8 @@ def _set_cached(key: str, df: pd.DataFrame, ttl: int = 3600) -> None:
         for k, v in row.items():
             if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
                 row[k] = None
+            else:
+                row[k] = _sanitize_value(v)
     _redis.setex(key, ttl, json.dumps(records, ensure_ascii=False))
 
 
